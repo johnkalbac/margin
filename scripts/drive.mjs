@@ -673,13 +673,17 @@ try {
   // rectangle is a rectangle the runner may not have: the CI macOS display is
   // far smaller than a developer's, and macOS silently shrinks and lifts a
   // window that would not fit its work area.
+  //
+  // It also keeps a margin inside that work area, because a window filling it
+  // exactly *is* zoomed as far as macOS is concerned — `isMaximized()` then
+  // reports true, and the geometry recorded would be a maximized one.
   const moved = await app.evaluate(({ BrowserWindow, screen }, id) => {
     const window = BrowserWindow.fromId(id)
     const area = screen.getDisplayMatching(window.getNormalBounds()).workArea
     // The app's own minimums (§ index.ts MINIMUM_SIZE) still apply, so never ask
     // for less than those — Electron would resize past the request.
-    const width = Math.max(900, Math.min(1180, area.width))
-    const height = Math.max(560, Math.min(760, area.height))
+    const width = Math.max(900, Math.min(1180, area.width - 80))
+    const height = Math.max(560, Math.min(760, area.height - 80))
     const bounds = {
       x: area.x + Math.min(40, Math.max(0, area.width - width)),
       y: area.y + Math.min(40, Math.max(0, area.height - height)),
@@ -697,13 +701,16 @@ try {
   // asked for: the claim under test is that the app writes the window's real
   // geometry to the settings file, and whether the OS honours a resize request
   // to the pixel is the OS's business, not Margin's.
-  const actual = await app.evaluate(({ BrowserWindow }, id) =>
-    BrowserWindow.fromId(id)?.getNormalBounds() ?? null, mainWindowId)
+  const actual = await app.evaluate(({ BrowserWindow }, id) => {
+    const window = BrowserWindow.fromId(id)
+    if (!window) return null
+    return { ...window.getNormalBounds(), maximized: window.isMaximized() }
+  }, mainWindowId)
   const persisted = JSON.parse(fs.readFileSync(settingsFile, 'utf8')).window ?? null
   check('window geometry is persisted as the window moves',
     !!persisted && !!actual && persisted.width === actual.width &&
       persisted.height === actual.height && persisted.x === actual.x &&
-      persisted.y === actual.y && persisted.maximized === false,
+      persisted.y === actual.y && persisted.maximized === actual.maximized,
     `persisted=${JSON.stringify(persisted)} actual=${JSON.stringify(actual)} requested=${JSON.stringify(moved)}`)
   check('the geometry stays out of the renderer settings payload',
     !(await page.evaluate(async () => 'window' in (await window.margin.settings.get()))))
