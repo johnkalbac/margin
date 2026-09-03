@@ -1,0 +1,124 @@
+# Installers for both platforms.
+#
+# Push a tag (`git tag v0.1.0 && git push origin v0.1.0`) to build the installers
+# and attach them to a DRAFT GitHub Release, which you then review and publish.
+# Run it manually (Actions → Release → Run workflow) to get the same installers
+# as workflow artifacts without creating a release at all.
+#
+# Neither platform is code-signed — plan §15 leaves the signing identity open, and
+# electron-builder.cjs sets `identity: null`. macOS users will meet Gatekeeper and
+# Windows users SmartScreen until an identity is configured.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS (dmg + zip, universal)
+            os: macos-latest
+            script: dist:mac
+            artifact: macos-installers
+            files: |
+              release/*.dmg
+              release/*-mac.zip
+          - name: Windows (NSIS installer)
+            os: windows-latest
+            script: dist:win
+            artifact: windows-installer
+            files: release/*-setup.exe
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Cache the Electron download
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/electron
+            ~/AppData/Local/electron/Cache
+          key: electron-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: electron-${{ runner.os }}-
+
+      - run: npm ci
+
+      # The installer filenames carry the package.json version, not the tag. If
+      # the two disagree, v0.2.0 ships margin-0.1.0-setup.exe — fail here, before
+      # anything is built, rather than after it is uploaded.
+      - name: Check the tag matches package.json
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          pkg=$(node -p "require('./package.json').version")
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$pkg" != "$tag" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match package.json version $pkg"
+            exit 1
+          fi
+
+      - run: npm run test
+
+      # `--publish never` keeps electron-builder from trying to reach GitHub on
+      # its own; the release is assembled by the publish job below.
+      - name: Build installers
+        run: npm run ${{ matrix.script }} -- --publish never
+        env:
+          # Unsigned by design (see the header). Without this, electron-builder
+          # picks up any identity in the runner keychain and signs with it.
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.files }}
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    name: Draft release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: installers
+          merge-multiple: true
+
+      # A draft, so the notes can be edited and the installers spot-checked
+      # before anyone can download them. Publish from the Releases page, or add
+      # `--draft=false` here to have the tag publish directly.
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --draft \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            installers/*

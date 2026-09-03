@@ -1,0 +1,292 @@
+/*
+ * Design tokens.
+ *
+ * The colour, type, spacing, radius and elevation values below are the REAL
+ * values from the Runwai Design System (Claude Design project
+ * cd3c8982-5483-46bc-a3b3-6a6bdd48aca9), the system the design/*.dc.html mockups
+ * reference. Fetched 2026-08-30. Treat this file as downstream of that project:
+ * when the system changes, re-fetch rather than editing values here by hand.
+ *
+ * The system is deliberately austere, and three of its rules constrain the whole
+ * app - do not reintroduce what it excludes:
+ *   - ONE family. No display serif, no italic face. (Margin adds a mono for the
+ *     editor; see "Margin extensions".)
+ *   - NO signal colours. Validation and state are carried by border, weight and
+ *     copy, never by red/green/amber.
+ *   - NO drop shadows. Depth is tonal: a surface step (--lift-featured) or a
+ *     1px rule (--divider).
+ */
+
+/* ===== From the design system ========================================== */
+
+:root {
+  /* -- Brand & action --------------------------------------------------- */
+  --primary: #000000; /* the single brand action colour */
+  --on-primary: #ffffff;
+
+  /* -- Neutral ladder (five tiers of text + two of line) ----------------- */
+  --ink: #0a0a0a; /* headings, emphasis */
+  --ink-soft: #1f1f1f; /* nav links, secondary headings */
+  --graphite: #454545; /* default body copy */
+  --slate: #5a6472; /* tinted neutral - tertiary metadata */
+  --slate-soft: #7c8794;
+  --mute: #8a8a8a; /* disabled / fine print */
+  --stone: #a3a3a3; /* placeholders, footer eyebrows */
+  --ash: #c4c4c4; /* lightest readable neutral */
+
+  /* -- Surfaces --------------------------------------------------------- */
+  --canvas: #ffffff;
+  --canvas-warm: #fafaf9;
+  --hairline: #f2f2f2; /* featured infill + table banners */
+  --hairline-soft: #e4e4e4; /* 1px rules and dividers */
+  --surface-cool: #edeff1; /* media placeholder fill */
+  --scrim: #101215; /* photographic stage */
+  --footer: #0b0b0b;
+
+  /* -- Semantic aliases ------------------------------------------------- */
+  --text-heading: var(--ink);
+  --text-body: var(--graphite);
+  --text-secondary: var(--ink-soft);
+  --text-tertiary: var(--slate);
+  --text-meta: var(--stone);
+  --text-caption: var(--ash);
+  --text-on-dark: var(--on-primary);
+  --text-on-dark-quiet: rgba(255, 255, 255, 0.7);
+
+  --surface-page: var(--canvas);
+  --surface-tile: var(--canvas-warm);
+  --surface-featured: var(--hairline);
+  --surface-media: var(--surface-cool);
+  --surface-stage: var(--scrim);
+  --surface-footer: var(--footer);
+
+  --border-hairline: var(--hairline-soft);
+  --border-strong: var(--ink);
+
+  --action-fill: var(--primary);
+  --action-fill-text: var(--on-primary);
+  --action-fill-on-dark: var(--on-primary);
+  --action-fill-on-dark-text: var(--primary);
+
+  /* -- Type: sizes ------------------------------------------------------ */
+  --size-display: 48px;
+  --size-display-sm: 40px;
+  --size-heading-md: 36px;
+  --size-heading-sm: 24px;
+  --size-subtitle: 20px;
+  --size-body: 16px;
+  --size-link-sm: 14px;
+  --size-eyebrow: 14px;
+  --size-meta: 13px;
+  --size-micro-caps: 11px;
+
+  /* -- Type: weights ---------------------------------------------------- */
+  --weight-regular: 400;
+  --weight-caps: 450;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+
+  /* -- Type: tracking --------------------------------------------------- */
+  --track-display: -1.2px;
+  --track-display-sm: -1px;
+  --track-heading-md: -0.9px;
+  --track-body-tight: -0.16px;
+  --track-meta: -0.26px;
+  --track-eyebrow: 0.35px;
+  --track-micro-caps: 0.2px;
+  --track-none: 0;
+
+  /* -- Type: leading ---------------------------------------------------- */
+  --leading-display: 1;
+  --leading-body: 1.5;
+  --leading-body-tight: 1.3;
+  --leading-link: 1.43;
+
+  /* -- Type: role shorthands (font: shorthand - family last) ------------ */
+  --type-display: var(--weight-regular) var(--size-display) / var(--leading-display) var(--font-core);
+  --type-display-sm: var(--weight-regular) var(--size-display-sm) / var(--leading-display) var(--font-core);
+  --type-heading-md: var(--weight-regular) var(--size-heading-md) / var(--leading-display) var(--font-core);
+  --type-heading-sm: var(--weight-regular) var(--size-heading-sm) / var(--leading-display) var(--font-core);
+  --type-subtitle: var(--weight-regular) var(--size-subtitle) / var(--leading-display) var(--font-core);
+  --type-body: var(--weight-regular) var(--size-body) / var(--leading-body) var(--font-core);
+  --type-body-strong: var(--weight-semibold) var(--size-body) / var(--leading-body) var(--font-core);
+  --type-body-tight: var(--weight-regular) var(--size-body) / var(--leading-body-tight) var(--font-core);
+  --type-link-sm: var(--weight-semibold) var(--size-link-sm) / var(--leading-link) var(--font-core);
+  --type-eyebrow: var(--weight-medium) var(--size-eyebrow) / var(--leading-link) var(--font-core);
+  --type-meta: var(--weight-regular) var(--size-meta) / var(--leading-body-tight) var(--font-core);
+  --type-micro-caps: var(--weight-caps) var(--size-micro-caps) / var(--leading-body-tight) var(--font-core);
+  --type-button: var(--weight-semibold) var(--size-link-sm) / var(--leading-link) var(--font-core);
+
+  /* -- Radius ----------------------------------------------------------- */
+  --radius-none: 0px;
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 16px;
+  --radius-full: 9999px;
+
+  --radius-cell: var(--radius-none);
+  --radius-chip: var(--radius-sm);
+  --radius-media: var(--radius-md);
+  --radius-panel: var(--radius-lg);
+  --radius-pill: var(--radius-full);
+
+  /* -- Spacing ---------------------------------------------------------- */
+  --space-xxs: 4px;
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-xxl: 48px;
+  --space-section: 64px;
+  --space-section-lg: 96px;
+
+  --pad-card: var(--space-lg);
+  --pad-button-y: var(--space-sm);
+  --pad-button-x: var(--space-lg);
+  --gap-inline: var(--space-xs);
+  --gap-cards: var(--space-md);
+  --gap-cards-lg: var(--space-lg);
+
+  --control-height: 40px;
+  --control-height-touch: 48px;
+
+  /* -- Elevation: tonal, never a shadow --------------------------------- */
+  --elevation-flat: none;
+  --divider: 1px solid var(--hairline-soft);
+  --border-outline: 1px solid var(--ink);
+  --lift-featured: var(--hairline);
+  --ease-standard: cubic-bezier(0.2, 0.6, 0.2, 1);
+  --duration-fast: 120ms;
+  --duration-standard: 200ms;
+  --duration-slow: 400ms;
+}
+
+/* ===== Margin extensions ================================================
+ * Tokens the design system does not define, because it was authored for a
+ * marketing site rather than a desktop editor. Kept in their own block so a
+ * re-fetch of the system above never collides with them.
+ * ====================================================================== */
+
+:root {
+  /*
+   * The system declares ONE family and no mono. Margin needs one: the mockups
+   * set the editor, gutter, code and the Cmd-K chip in Geist Mono, the mono
+   * companion to the system's Geist. This is the only family Margin adds.
+   */
+  --font-mono: 'Geist Mono Variable', ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, monospace;
+
+  /*
+   * Small persistent UI text.
+   *
+   * The system's --stone (#A3A3A3) measures ~2.5:1 on --canvas, which suits its
+   * documented purpose - placeholders and footer eyebrows, read in passing - but
+   * Margin's pane labels, inactive tabs and status bar are read continuously for
+   * hours. Those use --ui-quiet, which resolves to a darker rung of the SAME
+   * ladder rather than inventing a value or redefining --stone, so --stone keeps
+   * its system meaning for genuinely incidental marks.
+   */
+  /* The system defines no focus ring; keyboard focus takes the action colour. */
+  --focus-ring: var(--primary);
+
+  --ui-quiet: var(--slate); /* #5A6472, ~6.4:1 on --canvas */
+  --ui-quieter: var(--mute); /* #8A8A8A, ~3.5:1 - non-essential marks only */
+
+  /*
+   * The shell ground.
+   *
+   * The design canvas sets the window ground to #EFEEE9 rather than the system's
+   * --canvas-warm (#FAFAF9). On the marketing site --canvas-warm is a tile fill
+   * one step off white; in Margin it is the ground the white panels sit on, and
+   * at #FAFAF9 that step measures ~1.03:1 - invisible at a glance. #EFEEE9
+   * measures ~1.16:1 and reads warm. Kept Margin-local rather than pushed into
+   * the system, where --canvas-warm is aliased to --surface-tile and every card
+   * on the marketing site would darken with it.
+   */
+  --shell-ground: #efeee9;
+
+  /* -- Shell metrics (from the mockups) --------------------------------- */
+  /*
+   * Two rows of chrome: a slim title bar carrying the wordmark and the native
+   * window controls, then the tab strip at full width below it.
+   * --titlebar-height varies by platform - see the [data-platform] blocks.
+   */
+  --titlebar-height: 32px;
+  --tabstrip-height: 40px;
+  --footer-height: 38px;
+  --shell-pad: var(--space-md);
+  --pane-radius: var(--radius-panel);
+  --divider-width: 22px;
+  --pane-min-width: 280px;
+
+  /* -- Editor ----------------------------------------------------------- */
+  --editor-font-size: 13.5px;
+  --editor-line-height: 22px;
+  /* Neutral, per "no signal colours" - the system's cool surface step. */
+  --editor-selection: var(--surface-cool);
+  --editor-active-line: var(--canvas-warm);
+}
+
+/*
+ * Dark mode (Phase 3).
+ *
+ * NOT from the design system: it defines no dark theme. --scrim and --footer are
+ * dark *surfaces* for photographic stages and page footers, not a mode. The
+ * values below invert the system's ladder while holding its character - neutral,
+ * no signal colours, no shadows - and reuse --scrim as the shell ground so the
+ * two themes share a vocabulary. Revisit with the design owner before Phase 3
+ * ships: this is a reasoned derivation, not a specification.
+ */
+:root[data-theme='dark'] {
+  --canvas: #17191c;
+  --canvas-warm: #101215;
+  --shell-ground: #101215;
+  --primary: #ffffff;
+  --on-primary: #000000;
+
+  --ink: #f7f7f7;
+  --ink-soft: #e3e3e3;
+  --graphite: #c2c2c2;
+  --slate: #97a1af;
+  --slate-soft: #7c8794;
+  --mute: #8a8a8a;
+  --stone: #6e6e6e;
+  --ash: #4a4a4a;
+
+  --hairline: #24262a;
+  --hairline-soft: #303338;
+  --surface-cool: #2a2f36;
+
+  --ui-quiet: #a9b3c1;
+  --ui-quieter: var(--mute);
+
+  --editor-selection: var(--surface-cool);
+  --editor-active-line: #1d2024;
+}
+
+/*
+ * Native window controls are drawn over the title bar, so it reserves their side
+ * and its height follows the platform: on macOS 38px with 86px of traffic lights
+ * on the left (titleBarStyle: 'hidden' plus trafficLightPosition, which is what
+ * centres them in this row - see src/main/index.ts), on Windows 32px with a
+ * 138px overlay - three 46px buttons - on the right (titleBarOverlay).
+ *
+ * The 86px is measured, not assumed: current macOS draws 14pt lights at a 23px
+ * pitch, so starting at the design's 14px gutter they end at 74px, and 86 leaves
+ * the same 12px gutter on the other side. They are NOT the 12pt-at-20px-pitch
+ * lights older references describe - that assumption is what put the mark within
+ * 4px of the close button.
+ */
+:root[data-platform='darwin'] {
+  --titlebar-height: 38px;
+  --titlebar-inset-left: 86px;
+  --titlebar-inset-right: 0px;
+}
+
+:root[data-platform='win32'],
+:root[data-platform='linux'] {
+  --titlebar-height: 32px;
+  --titlebar-inset-left: 0px;
+  --titlebar-inset-right: 138px;
+}

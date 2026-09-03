@@ -1,0 +1,80 @@
+# The full suite, on both target platforms.
+#
+# Plan §12: "CI runs the full suite on both macOS and Windows runners. Platform
+# parity asserted on only one platform is not asserted." So the matrix is not a
+# nicety — dropping a leg silently unasserts half of what these tests exist for.
+#
+# `npm run perf` is deliberately absent: a millisecond budget on a shared runner
+# fails for reasons unrelated to the change under test (see CLAUDE.md).
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Supersede in-flight PR runs; never cancel a run on master.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    name: check (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # electron's postinstall downloads a ~100MB zip to a cache outside
+      # node_modules, so setup-node's npm cache does not cover it.
+      - name: Cache the Electron download
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/electron
+            ~/AppData/Local/electron/Cache
+          key: electron-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: electron-${{ runner.os }}-
+
+      - run: npm ci
+
+      # The steps of `npm run check`, spelled out, so a failure names itself in
+      # the job summary instead of surfacing as "npm run check exited 1".
+      - run: npm run typecheck
+      - run: npm run check:deps
+      - run: npm run test
+      - run: npm run build
+      - run: npm run smoke
+
+      # e2e launches the real app, so it needs a desktop session. The macOS and
+      # Windows runners have one; a Linux leg would need xvfb, which is why
+      # there isn't one.
+      - name: npm run e2e
+        run: npm run e2e
+        env:
+          SCREENSHOT_DIR: ${{ github.workspace }}/e2e-screenshots
+
+      # The driver screenshots each step it drives; on a failure those are the
+      # only view of what the window actually looked like.
+      - name: Upload e2e screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots-${{ runner.os }}
+          path: e2e-screenshots
+          if-no-files-found: ignore
+          retention-days: 7

@@ -1,0 +1,30 @@
+/*
+ * Font families.
+ *
+ * Adapted from the design system's tokens/fonts.css with one necessary change:
+ * the system @imports Geist from fonts.googleapis.com, which a desktop app must
+ * not do. Margin bundles the same faces via @fontsource-variable (imported in
+ * main.tsx) so the app works offline and the CSP admits no remote origins.
+ *
+ * The system's note carries over: abcNormal (proprietary, not supplied) is
+ * substituted with Geist, the closest open-source neo-grotesque to ABC Diatype.
+ * If abcNormal binaries ever arrive, self-host them and put "abcNormal" ahead of
+ * Geist in the stack below.
+ */
+
+/* Metric-compensated fallback so layout does not shift before the webfont paints. */
+@font-face {
+  font-family: 'abcNormal Fallback';
+  src: local('Helvetica Neue'), local('Arial');
+  ascent-override: 100.5%;
+  descent-override: 29.5%;
+  line-gap-override: 0%;
+  size-adjust: 102.21%;
+}
+
+:root {
+  --font-core:
+    'Geist Variable', 'abcNormal', 'abcNormal Fallback', -apple-system, 'Helvetica Neue', Arial,
+    sans-serif;
+  --font-sans: var(--font-core);
+}

@@ -1,0 +1,25 @@
+# Normalize to LF in the repository; check out with native endings.
+* text=auto
+
+# Source and config are always LF, on every platform.
+*.ts    text eol=lf
+*.tsx   text eol=lf
+*.js    text eol=lf
+*.mjs   text eol=lf
+*.cjs   text eol=lf
+*.json  text eol=lf
+*.css   text eol=lf
+*.html  text eol=lf
+*.md    text eol=lf
+*.yml   text eol=lf
+
+# Never touched by normalization.
+*.woff2 binary
+*.png   binary
+*.jpg   binary
+*.ico   binary
+*.icns  binary
+
+# Generated — collapse in diffs and exclude from language stats.
+package-lock.json  linguist-generated=true -diff
+.claude/skills/margin-design/support.js  linguist-generated=true -diff

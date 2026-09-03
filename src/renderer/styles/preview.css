@@ -1,0 +1,234 @@
+/*
+ * Rendered Markdown. Driven by the same custom properties as the app chrome
+ * (plan §4.4) so the theme toggle moves all three surfaces together.
+ */
+
+/*
+ * The scroll container. `position: relative` makes it the offsetParent, so the
+ * data-source-line anchors that drive scroll sync measure against it directly.
+ */
+.preview__scroll {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 6px;
+}
+
+.markdown {
+  font: var(--type-body);
+  color: var(--graphite);
+  user-select: text;
+  cursor: auto;
+  overflow-wrap: break-word;
+}
+
+.markdown > :first-child {
+  margin-top: 0;
+}
+
+.markdown > :last-child {
+  margin-bottom: 0;
+}
+
+/* ── Headings ───────────────────────────────────────────────────────────── */
+
+.markdown h1 {
+  font: var(--type-heading-md);
+  letter-spacing: var(--track-heading-md);
+  color: var(--ink);
+  margin: 0 0 14px;
+  padding-bottom: 13px;
+  border-bottom: var(--divider);
+}
+
+.markdown h2 {
+  font: var(--type-heading-sm);
+  letter-spacing: var(--track-none);
+  color: var(--ink);
+  margin: 28px 0 10px;
+}
+
+.markdown h3 {
+  font: var(--type-subtitle);
+  letter-spacing: var(--track-none);
+  color: var(--ink);
+  margin: 22px 0 8px;
+}
+
+.markdown h4,
+.markdown h5,
+.markdown h6 {
+  font: var(--type-body-strong);
+  color: var(--ink-soft);
+  margin: 18px 0 6px;
+}
+
+.markdown h6 {
+  font: var(--type-micro-caps);
+  letter-spacing: var(--track-micro-caps);
+  text-transform: uppercase;
+  color: var(--ui-quiet);
+}
+
+/* ── Body ───────────────────────────────────────────────────────────────── */
+
+.markdown p {
+  margin: 0 0 14px;
+}
+
+.markdown ul,
+.markdown ol {
+  margin: 0 0 14px;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.markdown li > ul,
+.markdown li > ol {
+  margin: 6px 0 0;
+}
+
+.markdown li::marker {
+  color: var(--ui-quiet);
+}
+
+.markdown strong {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.markdown em {
+  font-style: italic;
+}
+
+.markdown del {
+  color: var(--slate);
+}
+
+.markdown a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--ash);
+  cursor: pointer;
+}
+
+.markdown a:hover {
+  text-decoration-color: currentColor;
+}
+
+.markdown blockquote {
+  margin: 0 0 14px;
+  padding-left: 18px;
+  border-left: 1px solid var(--ink);
+  color: var(--slate);
+}
+
+.markdown hr {
+  height: 1px;
+  border: none;
+  background: var(--hairline-soft);
+  margin: 24px 0;
+}
+
+.markdown img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-sm);
+}
+
+/* ── Code ───────────────────────────────────────────────────────────────── */
+
+.markdown code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  background: var(--hairline);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.markdown pre {
+  margin: 0 0 14px;
+  padding: 14px 16px;
+  background: var(--hairline);
+  border-radius: var(--radius-md);
+  /* Long lines scroll inside the block; the pane itself never scrolls sideways. */
+  overflow-x: auto;
+}
+
+.markdown pre code {
+  background: none;
+  padding: 0;
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--ink-soft);
+}
+
+/* ── Tables ─────────────────────────────────────────────────────────────── */
+
+.markdown table {
+  width: 100%;
+  margin: 0 0 14px;
+  border-collapse: collapse;
+  font-size: 14px;
+  display: block;
+  overflow-x: auto;
+}
+
+.markdown th,
+.markdown td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: var(--divider);
+}
+
+.markdown th {
+  font: var(--type-micro-caps);
+  letter-spacing: var(--track-micro-caps);
+  text-transform: uppercase;
+  color: var(--ui-quiet);
+}
+
+/* ── Task lists (GFM) ───────────────────────────────────────────────────── */
+
+.markdown .task-list-item {
+  list-style: none;
+  margin-left: -20px;
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+}
+
+.markdown .task-list-item input[type='checkbox'] {
+  accent-color: var(--ink);
+  /* Disabled in the sanitizer — the preview is a view of the source, not a control. */
+  cursor: default;
+}
+
+/* ── Definition lists and footnotes (GFM + extras) ──────────────────────── */
+
+.markdown dt {
+  font-weight: 600;
+  color: var(--ink);
+  margin-top: 10px;
+}
+
+.markdown dd {
+  margin: 4px 0 0 20px;
+}
+
+.markdown .footnotes {
+  margin-top: var(--space-xl);
+  padding-top: var(--space-md);
+  border-top: var(--divider);
+  font: var(--type-meta);
+  color: var(--slate);
+}
+
+.markdown .footnotes ol {
+  gap: 4px;
+}
