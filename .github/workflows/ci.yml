@@ -24,9 +24,9 @@ jobs:
         os: [macos-latest, windows-latest]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -34,7 +34,7 @@ jobs:
       # electron's postinstall downloads a ~100MB zip to a cache outside
       # node_modules, so setup-node's npm cache does not cover it.
       - name: Cache the Electron download
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/Library/Caches/electron
@@ -64,7 +64,7 @@ jobs:
       # only view of what the window actually looked like.
       - name: Upload e2e screenshots
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-screenshots-${{ runner.os }}
           path: e2e-screenshots

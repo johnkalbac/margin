@@ -123,13 +123,10 @@ git tag v0.1.0 && git push origin v0.1.0
 
 — and it checks the tag against the version in `package.json` (they have to
 agree, because the installer filenames carry the `package.json` version), builds
-both platforms, and attaches the installers to a **draft** GitHub Release for you
+both platforms, and attaches the installers to a GitHub Release for you
 to review and publish. Running the workflow manually from the Actions tab builds
 the same installers as downloadable workflow artifacts without creating a release.
 
-Neither platform is code-signed. `electron-builder.cjs` sets `identity: null`
-while the signing identity is an open question, so macOS users will meet
-Gatekeeper and Windows users SmartScreen.
 
 ## A note on where history is stored
 
