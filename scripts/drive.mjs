@@ -669,18 +669,42 @@ try {
   )
   const priorGeometry = JSON.parse(fs.readFileSync(settingsFile, 'utf8')).window ?? null
 
-  const moved = { x: 140, y: 90, width: 1180, height: 760 }
-  await app.evaluate(({ BrowserWindow }, args) =>
-    BrowserWindow.fromId(args.id)?.setBounds(args.bounds), { id: mainWindowId, bounds: moved })
+  // The move is sized to the display the window is actually on. A fixed
+  // rectangle is a rectangle the runner may not have: the CI macOS display is
+  // far smaller than a developer's, and macOS silently shrinks and lifts a
+  // window that would not fit its work area.
+  const moved = await app.evaluate(({ BrowserWindow, screen }, id) => {
+    const window = BrowserWindow.fromId(id)
+    const area = screen.getDisplayMatching(window.getNormalBounds()).workArea
+    // The app's own minimums (§ index.ts MINIMUM_SIZE) still apply, so never ask
+    // for less than those — Electron would resize past the request.
+    const width = Math.max(900, Math.min(1180, area.width))
+    const height = Math.max(560, Math.min(760, area.height))
+    const bounds = {
+      x: area.x + Math.min(40, Math.max(0, area.width - width)),
+      y: area.y + Math.min(40, Math.max(0, area.height - height)),
+      width,
+      height
+    }
+    window.setBounds(bounds)
+    return bounds
+  }, mainWindowId)
   // Past the settle delay in index.ts, which holds the synchronous write off
   // until a drag has ended.
   await new Promise((r) => setTimeout(r, 1200))
 
+  // Compared against what the window actually ended up at, not against what was
+  // asked for: the claim under test is that the app writes the window's real
+  // geometry to the settings file, and whether the OS honours a resize request
+  // to the pixel is the OS's business, not Margin's.
+  const actual = await app.evaluate(({ BrowserWindow }, id) =>
+    BrowserWindow.fromId(id)?.getNormalBounds() ?? null, mainWindowId)
   const persisted = JSON.parse(fs.readFileSync(settingsFile, 'utf8')).window ?? null
   check('window geometry is persisted as the window moves',
-    !!persisted && persisted.width === moved.width && persisted.height === moved.height &&
-      persisted.x === moved.x && persisted.y === moved.y && persisted.maximized === false,
-    JSON.stringify(persisted))
+    !!persisted && !!actual && persisted.width === actual.width &&
+      persisted.height === actual.height && persisted.x === actual.x &&
+      persisted.y === actual.y && persisted.maximized === false,
+    `persisted=${JSON.stringify(persisted)} actual=${JSON.stringify(actual)} requested=${JSON.stringify(moved)}`)
   check('the geometry stays out of the renderer settings payload',
     !(await page.evaluate(async () => 'window' in (await window.margin.settings.get()))))
 
