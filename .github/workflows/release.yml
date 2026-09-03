@@ -67,9 +67,6 @@ jobs:
 
       - name: Build installers
         run: npm run ${{ matrix.script }} -- --publish never
-        env:
-          # TODO
-          CSC_IDENTITY_AUTO_DISCOVERY: false
 
       - uses: actions/upload-artifact@v7
         with:

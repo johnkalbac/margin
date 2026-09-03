@@ -13,9 +13,14 @@ Above, in order: live preview as you type, the ⌘K palette switching to dark
 mode, the edit-history sidebar previewing an earlier version, and an inline
 compare against another file on disk.
 
+## Installing
+
+Grab the newest build from [Releases](https://github.com/johnkalbac/margin/releases):
+the `.dmg` on macOS, the `-setup.exe` on Windows.
+
 ## Requirements
 
-Node 22 or newer.
+Node 22 or newer to build from source.
 
 ## Getting started
 
@@ -104,36 +109,6 @@ blocks the bundle, or a renderer that throws on mount. `e2e` launches the actual
 main process and drives the app through its native menu, which is the only way
 the command wiring, the file layer and the quit handshake are exercised for real.
 
-## Continuous integration and releases
-
-Two workflows in `.github/workflows/`:
-
-`ci.yml` runs on every push to `master` and every pull request. It runs the steps
-of `npm run check` — typecheck, dependency check, tests, build, smoke, e2e — on
-**both** a macOS and a Windows runner, because parity asserted on one platform is
-not asserted. On a failure it uploads the screenshots the e2e driver takes at each
-step. `perf` is not part of it, for the reason given above.
-
-`release.yml` builds the installers: the universal dmg and zip on macOS, the NSIS
-setup executable on Windows. Push a version tag to cut a release —
-
-```bash
-git tag v0.1.0 && git push origin v0.1.0
-```
-
-— and it checks the tag against the version in `package.json` (they have to
-agree, because the installer filenames carry the `package.json` version), builds
-both platforms, and attaches the installers to a GitHub Release for you
-to review and publish. Running the workflow manually from the Actions tab builds
-the same installers as downloadable workflow artifacts without creating a release.
-
-
-## A note on where history is stored
-
-Edit history is written to the application's data directory, not next to your
-files, as plain, unencrypted JSON lines. Opening a sensitive document therefore
-leaves a copy of its content in application data, and deleting the document does
-not delete that copy.
 
 ## Architecture
 
@@ -146,15 +121,3 @@ src/
   renderer/   React UI, CodeMirror host, preview
 ```
 
-Four constraints shape it: the renderer never touches `fs`, `core/` never
-imports Electron, one `EditorView` serves N documents, and every preview string
-passes through DOMPurify. They are documented in [`CLAUDE.md`](CLAUDE.md) and
-specified in [`margin-implementation-plan.md`](margin-implementation-plan.md).
-
-## Security
-
-Markdown files are treated as untrusted input. Raw HTML is disabled in the parser,
-all preview HTML passes through DOMPurify, the renderer runs with
-`contextIsolation` on and `sandbox` on with no `fs` access, a strict CSP blocks
-remote resource loading, and external links open in the system browser rather than
-in-app.

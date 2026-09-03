@@ -39,7 +39,7 @@ module.exports = {
 
   files: ['out/**/*', 'package.json', '!**/*.map'],
 
-  /**
+    /**
    * The icons are named explicitly even though `buildResources: 'build'` would
    * find build/icon.icns and build/icon.ico on its own — same reasoning as the
    * filename note above: auto-discovery that misses is silent, and the symptom
@@ -58,9 +58,7 @@ module.exports = {
     category: 'public.app-category.productivity',
     hardenedRuntime: true,
     gatekeeperAssess: false,
-    // Code signing is an open decision (plan §15). Until an identity is
-    // configured, builds are unsigned and Gatekeeper will warn.
-    identity: null
+    identity: '-'
   },
 
   win: {
