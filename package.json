@@ -2,7 +2,7 @@
   "name": "margin",
   "version": "0.1.0",
   "private": true,
-  "description": "Live two-panel Markdown editor.",
+  "description": "A simple Markdown editor.",
   "author": "John Kalbac",
   "type": "module",
   "main": "./out/main/index.cjs",

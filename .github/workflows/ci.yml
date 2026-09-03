@@ -1,11 +1,3 @@
-# The full suite, on both target platforms.
-#
-# Plan §12: "CI runs the full suite on both macOS and Windows runners. Platform
-# parity asserted on only one platform is not asserted." So the matrix is not a
-# nicety — dropping a leg silently unasserts half of what these tests exist for.
-#
-# `npm run perf` is deliberately absent: a millisecond budget on a shared runner
-# fails for reasons unrelated to the change under test (see CLAUDE.md).
 name: CI
 
 on:
