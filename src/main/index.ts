@@ -2,10 +2,12 @@ import { join } from 'node:path'
 import { app, BrowserWindow, screen, session } from 'electron'
 
 import { APP_ID, PRODUCT_NAME, windowTitle } from '@shared/branding'
+import { pathsFromArgv } from './argvFiles'
 import { applyContentSecurityPolicy, hardenWindow } from './security'
 import {
   currentTheme,
   disposeFileLayer,
+  openFilesInWindow,
   registerIpcHandlers,
   rememberWindowState,
   requestWindowClose,
@@ -288,11 +290,22 @@ if (process.platform === 'win32') app.setAppUserModelId(APP_ID)
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
-  app.on('second-instance', () => {
+  /**
+   * A second launch — on Windows, this is how 'Open with > Margin' arrives when
+   * the app is already running: Explorer starts Margin again, the new process
+   * dies on the single-instance lock, and its argv is handed to us here. The
+   * argv used to be dropped, so the clicked file opened nothing.
+   */
+  app.on('second-instance', (_event, argv) => {
+    const paths = pathsFromArgv(argv)
     const [existing] = BrowserWindow.getAllWindows()
     if (!existing) return
     if (existing.isMinimized()) existing.restore()
     existing.focus()
+    // The window has been loaded since long before this click, so the push
+    // lands immediately; sendDocOpened still covers a start-up race (an 'Open
+    // with' arriving while the first window is still loading).
+    void openFilesInWindow(existing, paths)
   })
 
   void app.whenReady().then(() => {
@@ -300,7 +313,21 @@ if (!app.requestSingleInstanceLock()) {
     // The file layer needs a way to open a second window (File > New Window,
     // Open in New Window), and window options live here.
     registerIpcHandlers({ createWindow })
-    createWindow()
+    const firstWindow = createWindow()
+
+    /**
+     * Cold start with files in argv: double-clicked on Windows (the path comes
+     * appended), or `margin README.md` from a shell. macOS passes no argv on
+     * open — its equivalent is the dock `activate` path and the (unimplemented)
+     * open-file event — so this is effectively the Windows and CLI route.
+     *
+     * Scheduled after `createWindow()` so the window exists to receive them;
+     * openFilesInWindow rides `did-finish-load` if the read beats the boot.
+     * argv[0] is the exe and, in dev, argv[1] is the app directory — the filter
+     * in pathsFromArgv rejects both, since neither is an openable file.
+     */
+    const initialFiles = pathsFromArgv(process.argv)
+    if (initialFiles.length > 0) void openFilesInWindow(firstWindow, initialFiles)
 
     // macOS: clicking the dock icon with no windows open creates one.
     app.on('activate', () => {
