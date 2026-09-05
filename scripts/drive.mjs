@@ -163,11 +163,32 @@ try {
   await page.waitForLoadState('domcontentloaded')
   const mainWindowId = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].id)
 
-  const ready = await until(() => !!document.querySelector('.cm-editor'), '.cm-editor', 20_000)
-  check('app launches and the editor mounts', ready)
+  // Boot lands on the home screen, not on an untitled buffer.
+  const homeBooted = await until(() => !!document.querySelector('.home'), '.home', 20_000)
+  check('app launches to the home screen', homeBooted)
 
   // ── Shell ────────────────────────────────────────────────────────────────
   console.log(`\n  landing: ${await shot('01-landing')}`)
+
+  const landing = await page.evaluate(() => ({
+    tabs: document.querySelectorAll('.tab').length,
+    actions: [...document.querySelectorAll('.home__action')].map((b) =>
+      b.textContent?.replace(/\s+/g, ' ').trim()
+    ),
+    theme: document.documentElement.dataset.theme ?? null
+  }))
+  check('boots with no document tab', landing.tabs === 0, `${landing.tabs} tabs`)
+  check('the home screen offers only the sample link',
+    landing.actions.length === 1 && landing.actions[0] === 'Open the sample document',
+    landing.actions.join(' | '))
+  check('theme applied from settings', landing.theme === 'light' || landing.theme === 'dark', landing.theme)
+
+  // The link seeds the sample markdown as an untitled document — the same
+  // renderer-side seed boot used to perform unasked. Named "Untitled", not
+  // "Untitled 2": a second create would leak a document in main's registry.
+  await page.evaluate(() => document.querySelector('.home__action')?.click())
+  const ready = await until(() => !!document.querySelector('.cm-editor'), '.cm-editor', 20_000)
+  check('the sample link opens a document and the editor mounts', ready)
 
   const shell = await page.evaluate(() => ({
     tabs: document.querySelectorAll('.tab').length,
@@ -175,16 +196,12 @@ try {
     panes: document.querySelectorAll('.pane').length,
     footer: !!document.querySelector('.footer'),
     previewBlocks: document.querySelectorAll('.markdown > *').length,
-    save: document.querySelector('.footer__save')?.textContent ?? null,
-    theme: document.documentElement.dataset.theme ?? null
+    save: document.querySelector('.footer__save')?.textContent ?? null
   }))
-  // Named "Untitled", not "Untitled 2": a second create at boot would leak a
-  // document in main's registry and misname the visible one.
-  check('boots with exactly one tab, named Untitled',
+  check('the sample opens as exactly one tab, named Untitled',
     shell.tabs === 1 && shell.tabName === 'Untitled', `name=${shell.tabName}`)
   check('both panes and the footer render', shell.panes === 2 && shell.footer)
   check('preview rendered the welcome document', shell.previewBlocks > 5, `${shell.previewBlocks} blocks`)
-  check('theme applied from settings', shell.theme === 'light' || shell.theme === 'dark', shell.theme)
 
   // The appearance toggle sits between the cursor position and the flavor.
   const footerOrder = await page.evaluate(() =>
@@ -538,6 +555,7 @@ try {
     actions: [...document.querySelectorAll('.home__action')].map((b) =>
       b.textContent?.replace(/\s+/g, ' ').trim()
     ),
+    recent: document.querySelectorAll('.home__recentItem').length,
     footerItems: [...document.querySelectorAll('.footer__state .footer__item')].map(
       (n) => n.textContent
     ),
@@ -546,53 +564,17 @@ try {
   check('closing the last tab shows the home screen (§4.1)',
     home && homeState.tabs === 0 && homeState.panes === 0,
     `tabs=${homeState.tabs} panes=${homeState.panes}`)
-  check('home screen shows the mark and both actions',
-    homeState.mark && homeState.wordmark === 'margin' && homeState.actions.length === 2,
+  check('home screen shows the mark and only the sample link',
+    homeState.mark && homeState.wordmark === 'margin' &&
+      homeState.actions.length === 1 && homeState.actions[0] === 'Open the sample document',
     homeState.actions.join(' | '))
+  // The recent list left the home screen; main still records recent files, the
+  // menu's Open Recent still reads them.
+  check('home screen lists no recent files', homeState.recent === 0, `${homeState.recent} entries`)
   check('footer reports no document state on the home screen',
     homeState.footerItems.length === 1,
     homeState.footerItems.join(' · '))
   console.log(`  home: ${await shot('13-home')}`)
-
-  // ── Clearing the recent list ─────────────────────────────────────────────
-  //
-  // The scratch file opened earlier put a real entry in the list, so the block
-  // is showing. The control arms on the first click and only acts on the
-  // second — this drives the arming and then deliberately stops.
-  //
-  // Confirming is NOT driven: this suite runs against the developer's real
-  // userData (the app is launched with no profile override), so a confirm here
-  // would erase their actual recent files. tests/main/settings.test.ts covers
-  // what the second click does, against a temp settings file.
-  const recentBefore = await page.evaluate(
-    () => document.querySelectorAll('.home__recentItem').length
-  )
-  check('the home screen lists recent files after a real open', recentBefore > 0,
-    `${recentBefore} entries`)
-
-  // Focus is set explicitly rather than left to the click: Chromium on macOS
-  // follows the platform and does not focus a button on mousedown, so the blur
-  // below would never fire there.
-  await page.evaluate(() => document.querySelector('.home__recentClear')?.focus())
-  await page.click('.home__recentClear')
-  const armed = await until(
-    () => document.querySelector('.home__recentClear')?.textContent === 'Confirm',
-    'armed clear',
-    4000
-  )
-  check('clearing recent files arms before it acts', armed,
-    await page.evaluate(() => document.querySelector('.home__recentClear')?.textContent ?? 'none'))
-
-  await page.evaluate(() => document.querySelector('.home__recentClear')?.blur())
-  const disarmed = await until(
-    () => document.querySelector('.home__recentClear')?.textContent === 'Clear',
-    'disarmed clear',
-    4000
-  )
-  check('an armed clear disarms when it loses focus', disarmed)
-  check('arming alone clears nothing',
-    (await page.evaluate(() => document.querySelectorAll('.home__recentItem').length)) ===
-      recentBefore)
 
   // Dark home screen, since it is a new surface.
   await page.evaluate(() => window.margin.settings.set({ theme: 'dark' }))
@@ -601,13 +583,10 @@ try {
   await page.evaluate(() => window.margin.settings.set({ theme: 'light' }))
   await until(() => document.documentElement.dataset.theme === 'light', 'light', 6000)
 
-  // And the home screen actually creates a document.
-  await page.evaluate(() => {
-    const buttons = [...document.querySelectorAll('.home__action')]
-    buttons.find((b) => b.textContent?.includes('New Document'))?.click()
-  })
+  // And the home screen's link opens a document.
+  await page.evaluate(() => document.querySelector('.home__action')?.click())
   const madeOne = await until(() => document.querySelectorAll('.tab').length === 1, 'new tab', 8000)
-  check('New Document on the home screen opens a document', madeOne)
+  check('the sample link on the home screen opens a document', madeOne)
 
   // ── The themed unsaved-changes prompt (§8) ───────────────────────────────
   await page.evaluate(() => document.querySelector('.cm-content')?.focus())

@@ -88,15 +88,6 @@ export function App(): React.JSX.Element {
   const [autoSaveDelayMs, setAutoSaveDelayMs] = useState(15_000)
   const [saveOnExit, setSaveOnExitState] = useState(false)
 
-  /** True once this window has asked main for its startup document. */
-  const seededRef = useRef(false)
-  /**
-   * True once the startup document has arrived (or been declined, for a handover
-   * window). The home screen waits for it: at the first render `documents` is
-   * empty because the create is still in flight, and showing the empty state
-   * then would flash it on every launch.
-   */
-  const [booted, setBooted] = useState(false)
   const panesRef = useRef<HTMLDivElement | null>(null)
   const previewScrollRef = useRef<HTMLDivElement | null>(null)
   const previewScrollMemo = useRef(0)
@@ -236,44 +227,6 @@ export function App(): React.JSX.Element {
     },
     [activate, editor]
   )
-
-  /**
-   * The document that exists at startup. Main creates it empty; the welcome text
-   * is a renderer-side seed — it is buffer content, not a file, and saving it
-   * prompts for a path like any untitled document.
-   *
-   * A window main created to receive a document (a detach, or Open in New
-   * Window) says so in its URL and seeds nothing: otherwise it opens with two
-   * tabs, its own and the one it was made for. The flag is read from the URL
-   * rather than asked for over IPC because this runs on the first render, before
-   * a round trip could answer.
-   */
-  useEffect(() => {
-    if (new URLSearchParams(window.location.search).has('handover')) {
-      // Its document is on the way over `doc:opened`.
-      setBooted(true)
-      return
-    }
-
-    /*
-     * Guarded by a ref, not by a cancellation flag.
-     *
-     * StrictMode mounts, unmounts and remounts in development, so this effect
-     * runs twice. A cancellation flag only discards the *result* of the first
-     * call — main has already registered that document, so the window shows
-     * "Untitled 2" and leaks an "Untitled" nobody can reach. The ref survives
-     * the simulated remount because the fiber does, so the create happens once.
-     */
-    if (seededRef.current) return
-    seededRef.current = true
-
-    void window.margin.doc.create().then((payload) => {
-      adopt([payload], WELCOME_DOCUMENT)
-      setBooted(true)
-    })
-    // Deliberately once: this seeds the window, and re-running would add tabs.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
   useEffect(() => {
     return () => {
@@ -510,17 +463,17 @@ export function App(): React.JSX.Element {
     adopt([await window.margin.doc.create()])
   }, [adopt])
 
-  const openPath = useCallback(
-    async (path: string): Promise<void> => {
-      const result = await window.margin.doc.open(path)
-      if (!result.ok) {
-        setNotice({ message: 'Could not open the file.', detail: result.error })
-        return
-      }
-      adopt(result.value)
-    },
-    [adopt]
-  )
+  /**
+   * The home screen's one way in: the sample markdown as an untitled buffer.
+   *
+   * This is the old boot seed moved behind a click. The text is renderer-side —
+   * buffer content, not a file — so saving it prompts for a path like any
+   * untitled document. Main's untitled naming means the tab reads "Untitled";
+   * adopt has no hook for a display name the registry would not recognize.
+   */
+  const openSample = useCallback(async (): Promise<void> => {
+    adopt([await window.margin.doc.create()], WELCOME_DOCUMENT)
+  }, [adopt])
 
   const openDocument = useCallback(async (): Promise<void> => {
     const result = await window.margin.doc.open()
@@ -987,14 +940,8 @@ export function App(): React.JSX.Element {
         />
       ) : null}
 
-      {documents.length === 0 && booted ? (
-        <HomeScreen
-          onNew={() => void newDocument()}
-          onOpen={() => void openDocument()}
-          onOpenPath={(path) => void openPath(path)}
-          newAccelerator={focusAccelerator('file.new')}
-          openAccelerator={focusAccelerator('file.open')}
-        />
+      {documents.length === 0 ? (
+        <HomeScreen onOpenSample={() => void openSample()} />
       ) : (
       <div className="panes" ref={panesRef}>
         <EditorPane
