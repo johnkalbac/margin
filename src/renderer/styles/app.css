@@ -305,8 +305,31 @@ body {
   min-width: 0;
 }
 
+/*
+ * The focused measure grows with the window instead of sitting at a fixed
+ * 720px on every screen. Bounds, in the order they bite:
+ *
+ *   94%           the measure never touches the pane wall,
+ *   100% - 2*g    at least clamp(2rem, 4vw, 4rem) of clear pane either side,
+ *                 inside the pane's own 20px padding,
+ *   38vw + 400    the growth slope — the measure gains ~38% of each extra
+ *                 window pixel, so width is filled, not sprawled,
+ *   1500px        the hard stop: past this the line length stops being
+ *                 readable however wide the monitor is.
+ *
+ * Where each window lands (measure = min of the bounds over the full pane):
+ * 900 ~742, 1280 ~886, 1440 ~947, 2560 ~1373, 3440 1500. Nothing above the
+ * app's 900px minimum window drops below the old 720; the slope and the stop
+ * trade places near 2900px, so an ultrawide grows into the cap instead of
+ * being pinned at 720 on a 3440px panel, which was the complaint.
+ */
 .pane__measure--active > * {
-  max-width: 720px;
+  max-width: min(
+    94%,
+    100% - 2 * clamp(2rem, 4vw, 4rem),
+    38vw + 400px,
+    1500px
+  );
 }
 
 .editor__host {
@@ -622,7 +645,13 @@ button.footer__item:hover {
   display: flex;
   flex-direction: column;
   flex: none;
-  width: 280px;
+  /*
+   * Fixed 280px beside split panes left ~275px of content per pane at the
+   * app's 900px minimum window. The 24vw floor only bites below ~1170px, so
+   * the mockup width stands at every default-size window; narrow windows pay
+   * a narrower column instead of squeezing the panes.
+   */
+  width: clamp(200px, 24vw, 280px);
   margin-left: var(--shell-pad);
   padding: 22px 20px;
   background: var(--canvas);
@@ -790,12 +819,6 @@ button.footer__item:hover {
   letter-spacing: -0.5px;
   line-height: 1;
   color: var(--ink);
-}
-
-.home__line {
-  margin: 0 0 10px;
-  font: var(--type-meta);
-  color: var(--ui-quiet);
 }
 
 .home__actions {
