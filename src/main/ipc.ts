@@ -15,7 +15,7 @@ import { windowTitle } from '@shared/branding'
 import { isEncoding, type Encoding } from '@core/text/encoding'
 import type { DocId, DocMeta } from '@shared/types'
 
-import { OPENABLE_EXTENSIONS } from './argvFiles'
+import { OPENABLE_EXTENSIONS } from '@shared/openable'
 import { DocumentRegistry, resolveKey } from './DocumentRegistry'
 import { FileWatcher, readTextFile, writeTextFile } from './FileService'
 import { HistoryService, type HistoryVersion } from './HistoryService'

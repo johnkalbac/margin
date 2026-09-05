@@ -203,6 +203,27 @@ try {
   check('both panes and the footer render', shell.panes === 2 && shell.footer)
   check('preview rendered the welcome document', shell.previewBlocks > 5, `${shell.previewBlocks} blocks`)
 
+  // ── Drag-and-drop affordance ─────────────────────────────────────────────
+  // A real file drop is NOT drivable from here: webUtils.getPathForFile returns
+  // '' for any File constructed in JS, so no synthetic drop can carry a path.
+  // What IS checkable is the half the renderer owns: that a drag hovering the
+  // shell raises the inset outline and leaving clears it. The drop path itself
+  // is covered by the pure-filter unit tests (tests/renderer/drop.test.ts).
+  const dragAffordance = await page.evaluate(async () => {
+    const shellEl = document.querySelector('.shell')
+    if (!shellEl) return { hovered: false, cleared: false }
+    shellEl.dispatchEvent(new DragEvent('dragenter', { bubbles: true, dataTransfer: new DataTransfer() }))
+    shellEl.dispatchEvent(new DragEvent('dragover', { bubbles: true, dataTransfer: new DataTransfer() }))
+    // React state settles on the next frame.
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+    const hovered = shellEl.classList.contains('shell--dragging')
+    shellEl.dispatchEvent(new DragEvent('dragleave', { bubbles: true, dataTransfer: new DataTransfer() }))
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+    return { hovered, cleared: !shellEl.classList.contains('shell--dragging') }
+  })
+  check('dragging a file over the shell raises the outline', dragAffordance.hovered)
+  check('the outline clears when the drag leaves', dragAffordance.cleared)
+
   // The appearance toggle sits between the cursor position and the flavor.
   const footerOrder = await page.evaluate(() =>
     [...document.querySelectorAll('.footer__state .footer__item')].map((n) => n.textContent)

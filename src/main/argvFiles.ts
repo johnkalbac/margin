@@ -1,6 +1,8 @@
 import { statSync } from 'node:fs'
 import { extname, resolve } from 'node:path'
 
+import { OPENABLE_EXTENSIONS } from '@shared/openable'
+
 /**
  * The files a launch was asked to open (Windows "Open with > Margin", double-
  * clicking a .md file, `margin.exe README.md`).
@@ -17,8 +19,10 @@ import { extname, resolve } from 'node:path'
  * ipc.ts, rather than copied, which is what a second list always becomes.
  */
 
-/** The document types Margin registers itself for and opens from the CLI. */
-export const OPENABLE_EXTENSIONS = ['md', 'markdown', 'mdown', 'mkd', 'txt']
+// Re-exported for existing importers (ipc.ts and this module's test). The
+// definition moved to @shared/openable so the renderer's drop filter reads the
+// same list rather than a copy of it.
+export { OPENABLE_EXTENSIONS }
 
 /**
  * A token that looks like a URL scheme rather than a path: `file://…`, `margin://…`.

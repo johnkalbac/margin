@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 
 import {
   IPC,
@@ -128,6 +128,19 @@ const bridge: MarginBridge = {
     },
     clearRecent(): Promise<RecentFile[]> {
       return ipcRenderer.invoke(IPC.clearRecentFiles)
+    },
+    /**
+     * Runs here, not in the renderer: webUtils is preload-only, and the dropped
+     * File arrives across contextBridge as a proxy webUtils still accepts. A
+     * synthetic File has no disk path — yield '' rather than throwing, so a
+     * text/plain drag never turns into a crash in the drop handler.
+     */
+    pathForFile(file: File): string {
+      try {
+        return webUtils.getPathForFile(file)
+      } catch {
+        return ''
+      }
     }
   },
 

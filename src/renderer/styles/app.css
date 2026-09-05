@@ -40,6 +40,16 @@ body {
   background: var(--shell-ground);
 }
 
+/*
+ * A file drag hovering the window. Inset 1px outline in the hairline token:
+ * the system draws attention with a rule, not a colour or a shadow. Inset (via
+ * negative offset) so the outline sits on the glass edge and costs no layout.
+ */
+.shell--dragging {
+  outline: 1px solid var(--hairline);
+  outline-offset: -1px;
+}
+
 /* ── Title bar ──────────────────────────────────────────────────────────── */
 
 /*
