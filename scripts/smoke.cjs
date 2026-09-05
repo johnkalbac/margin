@@ -171,6 +171,21 @@ async function main() {
 
   await win.loadFile(join(OUT, 'renderer', 'index.html'))
 
+  // Boot lands on the home screen now, and the probe measures the editor.
+  // Wait for the home to mount, then take the only road it offers — the
+  // sample link — which is exactly the flow a user drives.
+  for (let attempt = 0; attempt < 50; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    const home = await win.webContents.executeJavaScript(
+      '!!document.querySelector(".home__action")'
+    )
+    if (home) break
+    if (attempt === 49) throw new Error('home screen never mounted')
+  }
+  await win.webContents.executeJavaScript(
+    'document.querySelector(".home__action").click(); true'
+  )
+
   // Give React a beat to mount and the preview debounce to flush.
   let report = null
   for (let attempt = 0; attempt < 30; attempt++) {
