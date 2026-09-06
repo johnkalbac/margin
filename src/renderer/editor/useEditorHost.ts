@@ -180,9 +180,32 @@ export function useEditorHost({ mode, callbacks }: HostOptions): EditorHost {
 
   const attach = useCallback((element: HTMLDivElement | null) => {
     if (!element) {
-      viewRef.current?.destroy()
+      const view = viewRef.current
+      if (view) {
+        /*
+         * Write the live buffer back before the view goes. The Map's copy of the
+         * active document is only refreshed when it is switched away from, so it
+         * is stale by every edit made since — and destroying the view is the
+         * last moment the current one can be read.
+         */
+        const active = activeRef.current
+        if (active !== null && statesRef.current.has(active)) {
+          statesRef.current.set(active, view.state)
+          scrollRef.current.set(active, view.scrollSnapshot())
+        }
+        view.destroy()
+      }
       viewRef.current = null
-      activeRef.current = null
+      /*
+       * activeRef deliberately survives the detach. Which document the window is
+       * showing is a fact about the window, not about the view: a detach can be
+       * React reattaching the same pane — StrictMode does exactly that on every
+       * mount in development — and the record read below is the only thing that
+       * tells the new view what to mount with. Clearing it here mounted an empty
+       * editor beside a preview that still showed the file. When the last tab
+       * really does close, `closeDocument` clears it, which is the only reason
+       * this ever needs clearing at all.
+       */
       return
     }
     if (viewRef.current) return

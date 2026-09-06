@@ -63,7 +63,25 @@ module.exports = {
 
   win: {
     icon: 'build/icon.ico',
-    target: [{ target: 'nsis', arch: ['x64'] }]
+    target: [{ target: 'nsis', arch: ['x64'] }],
+    /**
+     * Register Margin as a handler for Markdown files (the NSIS install writes
+     * the HKCU ProgID/OpenWithProgids keys), so right-click > Open with > Choose
+     * another app lists Margin and a double-clicked .md can be routed to it.
+     * Without these, Windows has no idea the app opens documents at all, and the
+     * argv the OS appends to the launch has nowhere to come from. The extension
+     * set is the association's half of argvFiles' OPENABLE_EXTENSIONS; txt is
+     * deliberately left out — claiming it would make Margin a candidate for
+     * every plain-text file on the machine.
+     */
+    fileAssociations: [
+      {
+        ext: ['md', 'markdown', 'mdown', 'mkd'],
+        name: 'Markdown Document',
+        description: 'Markdown Document',
+        role: 'Editor'
+      }
+    ]
   },
 
   dmg: {

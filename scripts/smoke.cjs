@@ -42,6 +42,10 @@ function stubBootHandlers() {
     encodingGuessed: false
   }))
 
+  // The home screen asks for the recent list on mount. Empty is the honest
+  // answer for a bare harness, and it is also the state whose copy this checks.
+  ipcMain.handle('file:recent', () => [])
+
   // Settings drive the theme, which the renderer applies before first paint.
   ipcMain.handle('settings:get', () => ({ theme: 'light', defaultFlavor: 'gfm', recent: [] }))
   ipcMain.handle('settings:set', () => ({ theme: 'light', defaultFlavor: 'gfm', recent: [] }))
@@ -97,6 +101,9 @@ const PROBE = `(() => {
 
 const CHECKS = [
   ['preload bridge exposed', (r) => r.bridge === true],
+  ['home offers Open File… as its one row', (r) => r.homeActions.length === 1 && /^Open File…/.test(r.homeActions[0])],
+  ['home says so when there is no recent history', (r) => r.homeRecentEmpty === 'No recent history.'],
+  ['home keeps the sample link', (r) => r.homeSample === 'Open the sample document'],
   ['platform attribute set for titlebar insets', (r) => !!r.platformAttr],
   ['title bar rendered', (r) => r.titlebar],
   ['wordmark sits in the title bar, not the tab strip', (r) => r.titlebarBrand],
@@ -171,6 +178,34 @@ async function main() {
 
   await win.loadFile(join(OUT, 'renderer', 'index.html'))
 
+  // Boot lands on the home screen now, and the probe measures the editor. Wait
+  // for the home to mount, then take its sample link — the one road here that
+  // reaches a document without a native dialog this harness cannot drive.
+  for (let attempt = 0; attempt < 50; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    const home = await win.webContents.executeJavaScript(
+      '!!document.querySelector(".home__sample")'
+    )
+    if (home) break
+    if (attempt === 49) throw new Error('home screen never mounted')
+  }
+  // The home screen only exists until that click, so it is measured first.
+  const home = await win.webContents.executeJavaScript(`(() => ({
+    homeActions: [...document.querySelectorAll('.home__action')].map(
+      (b) => b.textContent.replace(/\\s+/g, ' ').trim()
+    ),
+    homeRecentEmpty: document.querySelector('.home__recentEmpty')
+      ? document.querySelector('.home__recentEmpty').textContent
+      : null,
+    homeSample: document.querySelector('.home__sample')
+      ? document.querySelector('.home__sample').textContent
+      : null
+  }))()`)
+
+  await win.webContents.executeJavaScript(
+    'document.querySelector(".home__sample").click(); true'
+  )
+
   // Give React a beat to mount and the preview debounce to flush.
   let report = null
   for (let attempt = 0; attempt < 30; attempt++) {
@@ -178,6 +213,7 @@ async function main() {
     report = await win.webContents.executeJavaScript(PROBE)
     if (report.editorMounted && report.previewBlocks > 5) break
   }
+  Object.assign(report, home)
 
   let failed = 0
   for (const [name, predicate] of CHECKS) {

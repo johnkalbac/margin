@@ -20,6 +20,7 @@ import { StatusBar } from './components/StatusBar'
 import { TabStrip } from './components/TabStrip'
 import { TitleBar } from './components/TitleBar'
 import { createCommandRegistry, type AppContext } from './commands/appCommands'
+import { droppedPaths } from './files/drop'
 import { useEditorHost } from './editor/useEditorHost'
 import { useScrollSync } from './hooks/useScrollSync'
 import type { CursorPosition } from './editor/setup'
@@ -87,19 +88,19 @@ export function App(): React.JSX.Element {
   const [autoSave, setAutoSaveState] = useState(false)
   const [autoSaveDelayMs, setAutoSaveDelayMs] = useState(15_000)
   const [saveOnExit, setSaveOnExitState] = useState(false)
+  /** True while a file drag hovers the window — draws the shell's inset outline. */
+  const [dragging, setDragging] = useState(false)
 
-  /** True once this window has asked main for its startup document. */
-  const seededRef = useRef(false)
-  /**
-   * True once the startup document has arrived (or been declined, for a handover
-   * window). The home screen waits for it: at the first render `documents` is
-   * empty because the create is still in flight, and showing the empty state
-   * then would flash it on every launch.
-   */
-  const [booted, setBooted] = useState(false)
   const panesRef = useRef<HTMLDivElement | null>(null)
   const previewScrollRef = useRef<HTMLDivElement | null>(null)
   const previewScrollMemo = useRef(0)
+  /**
+   * dragenter/dragleave pairs, counted because dragleave fires on every child
+   * transition — crossing into a child element reads as a leave. The outline is
+   * only cleared when the count reaches zero, which is the drag actually
+   * leaving the window (or a drop, which resets it).
+   */
+  const dragDepthRef = useRef(0)
 
   const activeDocument = documents.find((document) => document.id === activeId) ?? null
   const flavor: Flavor = activeDocument?.flavor ?? DEFAULT_FLAVOR
@@ -236,44 +237,6 @@ export function App(): React.JSX.Element {
     },
     [activate, editor]
   )
-
-  /**
-   * The document that exists at startup. Main creates it empty; the welcome text
-   * is a renderer-side seed — it is buffer content, not a file, and saving it
-   * prompts for a path like any untitled document.
-   *
-   * A window main created to receive a document (a detach, or Open in New
-   * Window) says so in its URL and seeds nothing: otherwise it opens with two
-   * tabs, its own and the one it was made for. The flag is read from the URL
-   * rather than asked for over IPC because this runs on the first render, before
-   * a round trip could answer.
-   */
-  useEffect(() => {
-    if (new URLSearchParams(window.location.search).has('handover')) {
-      // Its document is on the way over `doc:opened`.
-      setBooted(true)
-      return
-    }
-
-    /*
-     * Guarded by a ref, not by a cancellation flag.
-     *
-     * StrictMode mounts, unmounts and remounts in development, so this effect
-     * runs twice. A cancellation flag only discards the *result* of the first
-     * call — main has already registered that document, so the window shows
-     * "Untitled 2" and leaks an "Untitled" nobody can reach. The ref survives
-     * the simulated remount because the fiber does, so the create happens once.
-     */
-    if (seededRef.current) return
-    seededRef.current = true
-
-    void window.margin.doc.create().then((payload) => {
-      adopt([payload], WELCOME_DOCUMENT)
-      setBooted(true)
-    })
-    // Deliberately once: this seeds the window, and re-running would add tabs.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
   useEffect(() => {
     return () => {
@@ -510,6 +473,26 @@ export function App(): React.JSX.Element {
     adopt([await window.margin.doc.create()])
   }, [adopt])
 
+  /**
+   * The home screen's quietest way in: the sample markdown as an untitled buffer.
+   *
+   * This is the old boot seed moved behind a click. The text is renderer-side —
+   * buffer content, not a file — so saving it prompts for a path like any
+   * untitled document. Main's untitled naming means the tab reads "Untitled";
+   * adopt has no hook for a display name the registry would not recognize.
+   */
+  const openSample = useCallback(async (): Promise<void> => {
+    adopt([await window.margin.doc.create()], WELCOME_DOCUMENT)
+  }, [adopt])
+
+  /**
+   * Open one known path — the home screen's recent list.
+   *
+   * Same handler the drop path and main's Open Recent use, so an already-open
+   * file activates its tab instead of registering a second time (§2), and a
+   * recent entry naming a file that has since moved reports rather than
+   * silently doing nothing.
+   */
   const openPath = useCallback(
     async (path: string): Promise<void> => {
       const result = await window.margin.doc.open(path)
@@ -531,6 +514,96 @@ export function App(): React.JSX.Element {
     // An empty list is a cancelled dialog.
     adopt(result.value)
   }, [adopt])
+
+  /**
+   * Drag-and-drop opening (§4 files).
+   *
+   * Three rules decide everything here:
+   *
+   *   · Files open as NEW tabs — never the current buffer. Each path goes
+   *     through `doc.open(path)`, which lands on main's openPath: already-open
+   *     files return their existing payload (`alreadyOpen`) and adopt activates
+   *     that tab instead of re-reading anything, and every other file becomes a
+   *     fresh registration. No drop path can write into a live buffer.
+   *   · Reads are SEQUENTIAL, one batch, one adopt — the same shape
+   *     main's chooseAndOpen uses for argv and Open Recent. Parallel invokes
+   *     would race the registry's "Untitled N" naming and arrive at adopt out
+   *     of drop order; sequential keeps the last-dropped file the active one.
+   *   · The shell's will-navigate guard (security.ts) only exists because
+   *     nothing used to preventDefault these events — dropping onto a document
+   *     used to ask Chromium to navigate to file://..., which it silently
+   *     refused. preventDefault here is the drop being handled, not swallowed.
+   *
+   * A drag that carries no openable file shows a notice and opens nothing: the
+   * alternative is the silent failure users read as "drop doesn't work".
+   */
+  const openDroppedFiles = useCallback(
+    async (files: FileList | File[]): Promise<void> => {
+      const list = Array.from(files)
+      const paths = droppedPaths(list, (file) => window.margin.files.pathForFile(file))
+
+      // The drag carried text, an image, or files Margin does not open. Quiet,
+      // bare, and specific about what it does open.
+      if (paths.length === 0) {
+        if (list.length > 0) setNotice({ message: 'Margin opens Markdown files.' })
+        return
+      }
+
+      const opened: DocumentPayload[] = []
+      let firstError: string | null = null
+      for (const path of paths) {
+        const result = await window.margin.doc.open(path)
+        if (result.ok) opened.push(...result.value)
+        else firstError ??= result.error
+      }
+
+      // One adopt for the whole batch: activates the last file dropped and
+      // reports a guessed encoding once, not per file.
+      if (opened.length > 0) adopt(opened)
+      if (firstError) setNotice({ message: 'Could not open the file.', detail: firstError })
+    },
+    [adopt]
+  )
+
+  const onShellDragOver = useCallback((event: React.DragEvent): void => {
+    // Without preventDefault Chromium treats the drop as a navigation request
+    // and security.ts kills it — the window would simply ignore the drop.
+    event.preventDefault()
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
+    // setState with the same value is a no-op, so no `dragging` dependency.
+    setDragging(true)
+  }, [])
+
+  const onShellDragEnter = useCallback((): void => {
+    dragDepthRef.current += 1
+    setDragging(true)
+  }, [])
+
+  const onShellDragLeave = useCallback((event: React.DragEvent): void => {
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1)
+    // Leaving a child into another child fires leave+enter together; only the
+    // count reaching zero means the drag actually exited the window.
+    if (dragDepthRef.current === 0 && !event.currentTarget.contains(event.relatedTarget as Node | null)) {
+      setDragging(false)
+    }
+  }, [])
+
+  const onShellDropCapture = useCallback(
+    (event: React.DragEvent): void => {
+      // CodeMirror's own drop handler reads dropped files as TEXT and inserts
+      // them at the cursor — that is "dropping a file on an open file," and it
+      // fires on contentDOM before anything bubbles. Capture + stopPropagation
+      // takes the event away before CM sees it. A drag with no files is an
+      // internal text move and must stay CodeMirror's.
+      if (event.dataTransfer.files.length === 0) return
+      event.preventDefault()
+      event.stopPropagation()
+      dragDepthRef.current = 0
+      setDragging(false)
+      void openDroppedFiles(event.dataTransfer.files)
+    },
+    [openDroppedFiles]
+  )
 
   /**
    * Re-read the file under a different encoding (§6).
@@ -959,7 +1032,13 @@ export function App(): React.JSX.Element {
   const wordCount = useMemo(() => countWords(previewSource), [previewSource])
 
   return (
-    <div className="shell">
+    <div
+      className={dragging ? 'shell shell--dragging' : 'shell'}
+      onDragOver={onShellDragOver}
+      onDragEnter={onShellDragEnter}
+      onDragLeave={onShellDragLeave}
+      onDropCapture={onShellDropCapture}
+    >
       <TitleBar title={activeDocument?.name ?? ''} />
 
       <TabStrip
@@ -987,12 +1066,11 @@ export function App(): React.JSX.Element {
         />
       ) : null}
 
-      {documents.length === 0 && booted ? (
+      {documents.length === 0 ? (
         <HomeScreen
-          onNew={() => void newDocument()}
           onOpen={() => void openDocument()}
           onOpenPath={(path) => void openPath(path)}
-          newAccelerator={focusAccelerator('file.new')}
+          onOpenSample={() => void openSample()}
           openAccelerator={focusAccelerator('file.open')}
         />
       ) : (

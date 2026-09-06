@@ -57,6 +57,20 @@ function check(name, ok, detail = '') {
 
 // A scratch file the app will open and save, so the file layer runs for real.
 const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'margin-e2e-'))
+/*
+ * The run gets its own userData directory, for two reasons.
+ *
+ * Electron keys `requestSingleInstanceLock` on userData, so sharing the app's
+ * real one means this driver dies on launch — silently, as a Playwright
+ * "target closed" — whenever the developer happens to have Margin open. A
+ * harness that cannot run while you are using the app is a harness that does
+ * not run.
+ *
+ * It also makes the state the app reads back its own: settings, the recent
+ * list, the window rectangle and the history journal all start empty here, so
+ * "no recent history" is a fact about this run rather than about the machine.
+ */
+const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'margin-e2e-data-'))
 const scratchFile = path.join(workDir, 'notes.md')
 const compareFile = path.join(workDir, 'other.md')
 // CRLF on purpose: the EOL round trip is a Phase 2 claim worth exercising live.
@@ -154,7 +168,7 @@ async function shutdown() {
 try {
   app = await electron.launch({
     executablePath: path.join(APP_DIR, ELECTRON_BIN),
-    args: [APP_DIR],
+    args: [APP_DIR, `--user-data-dir=${userDataDir}`],
     env,
     timeout: 60_000
   })
@@ -163,28 +177,86 @@ try {
   await page.waitForLoadState('domcontentloaded')
   const mainWindowId = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].id)
 
-  const ready = await until(() => !!document.querySelector('.cm-editor'), '.cm-editor', 20_000)
-  check('app launches and the editor mounts', ready)
+  // Boot lands on the home screen, not on an untitled buffer.
+  const homeBooted = await until(() => !!document.querySelector('.home'), '.home', 20_000)
+  check('app launches to the home screen', homeBooted)
 
   // ── Shell ────────────────────────────────────────────────────────────────
   console.log(`\n  landing: ${await shot('01-landing')}`)
+
+  const landing = await page.evaluate(() => ({
+    tabs: document.querySelectorAll('.tab').length,
+    actions: [...document.querySelectorAll('.home__action')].map((b) =>
+      b.textContent?.replace(/\s+/g, ' ').trim()
+    ),
+    recentEmpty: document.querySelector('.home__recentEmpty')?.textContent ?? null,
+    recentItems: document.querySelectorAll('.home__recentItem').length,
+    sample: document.querySelector('.home__sample')?.textContent ?? null,
+    theme: document.documentElement.dataset.theme ?? null
+  }))
+  check('boots with no document tab', landing.tabs === 0, `${landing.tabs} tabs`)
+  check('the home screen leads with Open File… and its accelerator',
+    // No space between the label and the cap: they are adjacent spans.
+    landing.actions.length === 1 && /^Open File…(Cmd|Ctrl) O$/.test(landing.actions[0] ?? ''),
+    landing.actions.join(' | '))
+  // A userData directory made moments ago has no recent list, so this is the
+  // first-run state a user actually meets — an empty list that says so, rather
+  // than a section that renders nothing and reads as broken.
+  check('an empty recent list says so rather than vanishing',
+    landing.recentItems === 0 && landing.recentEmpty === 'No recent history.',
+    `${landing.recentItems} entries, empty=${landing.recentEmpty}`)
+  check('the sample link sits at the foot', landing.sample === 'Open the sample document',
+    String(landing.sample))
+  check('theme applied from settings', landing.theme === 'light' || landing.theme === 'dark', landing.theme)
+
+  // The link seeds the sample markdown as an untitled document — the same
+  // renderer-side seed boot used to perform unasked. Named "Untitled", not
+  // "Untitled 2": a second create would leak a document in main's registry.
+  await page.evaluate(() => document.querySelector('.home__sample')?.click())
+  const ready = await until(() => !!document.querySelector('.cm-editor'), '.cm-editor', 20_000)
+  check('the sample link opens a document and the editor mounts', ready)
 
   const shell = await page.evaluate(() => ({
     tabs: document.querySelectorAll('.tab').length,
     tabName: document.querySelector('.tab__name')?.textContent ?? null,
     panes: document.querySelectorAll('.pane').length,
     footer: !!document.querySelector('.footer'),
+    editorText: document.querySelector('.cm-content')?.textContent ?? null,
     previewBlocks: document.querySelectorAll('.markdown > *').length,
-    save: document.querySelector('.footer__save')?.textContent ?? null,
-    theme: document.documentElement.dataset.theme ?? null
+    save: document.querySelector('.footer__save')?.textContent ?? null
   }))
-  // Named "Untitled", not "Untitled 2": a second create at boot would leak a
-  // document in main's registry and misname the visible one.
-  check('boots with exactly one tab, named Untitled',
+  check('the sample opens as exactly one tab, named Untitled',
     shell.tabs === 1 && shell.tabName === 'Untitled', `name=${shell.tabName}`)
   check('both panes and the footer render', shell.panes === 2 && shell.footer)
+  // Not just that the view mounted — that it mounted holding the document. This
+  // is the first open of the window, where the panes mount around a document
+  // that is already active, and an empty buffer beside a full preview is the
+  // exact shape of the bug that path produced.
+  check('the editor holds the sample, not an empty buffer',
+    (shell.editorText ?? '').includes('# Margin'),
+    `${(shell.editorText ?? '').length} chars`)
   check('preview rendered the welcome document', shell.previewBlocks > 5, `${shell.previewBlocks} blocks`)
-  check('theme applied from settings', shell.theme === 'light' || shell.theme === 'dark', shell.theme)
+
+  // ── Drag-and-drop affordance ─────────────────────────────────────────────
+  // A real file drop is NOT drivable from here: webUtils.getPathForFile returns
+  // '' for any File constructed in JS, so no synthetic drop can carry a path.
+  // What IS checkable is the half the renderer owns: that a drag hovering the
+  // shell raises the inset outline and leaving clears it. The drop path itself
+  // is covered by the pure-filter unit tests (tests/renderer/drop.test.ts).
+  const dragAffordance = await page.evaluate(async () => {
+    const shellEl = document.querySelector('.shell')
+    if (!shellEl) return { hovered: false, cleared: false }
+    shellEl.dispatchEvent(new DragEvent('dragenter', { bubbles: true, dataTransfer: new DataTransfer() }))
+    shellEl.dispatchEvent(new DragEvent('dragover', { bubbles: true, dataTransfer: new DataTransfer() }))
+    // React state settles on the next frame.
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+    const hovered = shellEl.classList.contains('shell--dragging')
+    shellEl.dispatchEvent(new DragEvent('dragleave', { bubbles: true, dataTransfer: new DataTransfer() }))
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+    return { hovered, cleared: !shellEl.classList.contains('shell--dragging') }
+  })
+  check('dragging a file over the shell raises the outline', dragAffordance.hovered)
+  check('the outline clears when the drag leaves', dragAffordance.cleared)
 
   // The appearance toggle sits between the cursor position and the flavor.
   const footerOrder = await page.evaluate(() =>
@@ -538,6 +610,7 @@ try {
     actions: [...document.querySelectorAll('.home__action')].map((b) =>
       b.textContent?.replace(/\s+/g, ' ').trim()
     ),
+    recent: [...document.querySelectorAll('.home__recentName')].map((n) => n.textContent),
     footerItems: [...document.querySelectorAll('.footer__state .footer__item')].map(
       (n) => n.textContent
     ),
@@ -546,53 +619,18 @@ try {
   check('closing the last tab shows the home screen (§4.1)',
     home && homeState.tabs === 0 && homeState.panes === 0,
     `tabs=${homeState.tabs} panes=${homeState.panes}`)
-  check('home screen shows the mark and both actions',
-    homeState.mark && homeState.wordmark === 'margin' && homeState.actions.length === 2,
+  check('home screen shows the mark, Open File… and the sample link',
+    homeState.mark && homeState.wordmark === 'margin' &&
+      homeState.actions.length === 1 && /^Open File…/.test(homeState.actions[0] ?? ''),
     homeState.actions.join(' | '))
+  // This run has opened notes.md for real by now, so the list main records is
+  // the list the home screen draws — the same one the menu's Open Recent reads.
+  check('the recent list carries the file this run opened',
+    homeState.recent.includes('notes.md'), homeState.recent.join(' | '))
   check('footer reports no document state on the home screen',
     homeState.footerItems.length === 1,
     homeState.footerItems.join(' · '))
   console.log(`  home: ${await shot('13-home')}`)
-
-  // ── Clearing the recent list ─────────────────────────────────────────────
-  //
-  // The scratch file opened earlier put a real entry in the list, so the block
-  // is showing. The control arms on the first click and only acts on the
-  // second — this drives the arming and then deliberately stops.
-  //
-  // Confirming is NOT driven: this suite runs against the developer's real
-  // userData (the app is launched with no profile override), so a confirm here
-  // would erase their actual recent files. tests/main/settings.test.ts covers
-  // what the second click does, against a temp settings file.
-  const recentBefore = await page.evaluate(
-    () => document.querySelectorAll('.home__recentItem').length
-  )
-  check('the home screen lists recent files after a real open', recentBefore > 0,
-    `${recentBefore} entries`)
-
-  // Focus is set explicitly rather than left to the click: Chromium on macOS
-  // follows the platform and does not focus a button on mousedown, so the blur
-  // below would never fire there.
-  await page.evaluate(() => document.querySelector('.home__recentClear')?.focus())
-  await page.click('.home__recentClear')
-  const armed = await until(
-    () => document.querySelector('.home__recentClear')?.textContent === 'Confirm',
-    'armed clear',
-    4000
-  )
-  check('clearing recent files arms before it acts', armed,
-    await page.evaluate(() => document.querySelector('.home__recentClear')?.textContent ?? 'none'))
-
-  await page.evaluate(() => document.querySelector('.home__recentClear')?.blur())
-  const disarmed = await until(
-    () => document.querySelector('.home__recentClear')?.textContent === 'Clear',
-    'disarmed clear',
-    4000
-  )
-  check('an armed clear disarms when it loses focus', disarmed)
-  check('arming alone clears nothing',
-    (await page.evaluate(() => document.querySelectorAll('.home__recentItem').length)) ===
-      recentBefore)
 
   // Dark home screen, since it is a new surface.
   await page.evaluate(() => window.margin.settings.set({ theme: 'dark' }))
@@ -601,13 +639,26 @@ try {
   await page.evaluate(() => window.margin.settings.set({ theme: 'light' }))
   await until(() => document.documentElement.dataset.theme === 'light', 'light', 6000)
 
-  // And the home screen actually creates a document.
+  // A recent entry opens the file it names — through doc.open(path), the same
+  // handler the menu's Open Recent and a drop take, so §2's one-tab invariant
+  // holds no matter which surface asked.
   await page.evaluate(() => {
-    const buttons = [...document.querySelectorAll('.home__action')]
-    buttons.find((b) => b.textContent?.includes('New Document'))?.click()
+    const rows = [...document.querySelectorAll('.home__recentItem')]
+    rows.find((row) => row.textContent?.includes('notes.md'))?.click()
   })
+  const reopened = await until(
+    () => document.querySelector('.tab__name')?.textContent === 'notes.md', 'notes.md tab', 8000
+  )
+  check('a recent entry reopens its file from the home screen', reopened)
+
+  // Clean, since it came off disk — closing goes straight back to home.
+  await menuClick('file.closeTab')
+  await until(() => !!document.querySelector('.home'), 'home again', 8000)
+
+  // And the home screen's sample link opens a document.
+  await page.evaluate(() => document.querySelector('.home__sample')?.click())
   const madeOne = await until(() => document.querySelectorAll('.tab').length === 1, 'new tab', 8000)
-  check('New Document on the home screen opens a document', madeOne)
+  check('the sample link on the home screen opens a document', madeOne)
 
   // ── The themed unsaved-changes prompt (§8) ───────────────────────────────
   await page.evaluate(() => document.querySelector('.cm-content')?.focus())

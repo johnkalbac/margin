@@ -4,17 +4,22 @@ import type { RecentFile } from '@shared/ipc'
 import { LogoMark } from './Logo'
 
 /**
- * The empty-state window (plan §4.1).
+ * The window's empty state (§4.1), and also its whole startup.
  *
  * "Closing the last tab in a window leaves an empty-state window, not a closed
- * window." Until now that empty state was a fresh untitled document, which is a
- * reasonable reading but a poor one: it puts an unnamed buffer in front of
- * someone who just said they were finished with a document.
+ * window." That empty state is what a launch lands on too: boot does not seed a
+ * welcome buffer, so the first thing a window shows is this, not an unnamed
+ * document with someone else's prose in it.
  *
- * So: the mark, and the two things there are to do. The design system's voice
- * throughout — bare verbs, no encouragement, no illustration, no colour. The
- * mark is the only graphic the product ships, and it is not decorated here
- * either.
+ * Three things, in the order someone actually wants them: open a file, return
+ * to one recently open, or — for a first run, where the recent list is empty and
+ * says so — read the sample. The sample sits last and quietest: it is the start
+ * that shows the product rather than naming it, but it is not what a returning
+ * user came for.
+ *
+ * Bare verbs, no encouragement, no colour. Rows separated by hairlines, never
+ * filled buttons — the system has one filled surface and this is not it. The
+ * mark is the only graphic the product ships.
  */
 
 /**
@@ -32,35 +37,43 @@ function parentFolder(path: string): string | null {
   return parts.length >= 2 ? (parts[parts.length - 2] ?? null) : null
 }
 
+/** How many recents fit before the block competes with the rest of the screen. */
+const SHOWN = 5
+
 interface HomeScreenProps {
-  onNew: () => void
+  /** Raises the open dialog — the same path the File menu and Cmd+O take. */
   onOpen: () => void
+  /** Opens one recent entry by its absolute path. */
   onOpenPath: (path: string) => void
-  /** Accelerator labels, so the two actions teach their own shortcuts. */
-  newAccelerator: string | null
+  /** Opens the sample markdown — the WELCOME_DOCUMENT text — as an untitled document. */
+  onOpenSample: () => void
+  /** The Open accelerator label, so the row teaches its own shortcut. */
   openAccelerator: string | null
 }
 
 export function HomeScreen({
-  onNew,
   onOpen,
   onOpenPath,
-  newAccelerator,
+  onOpenSample,
   openAccelerator
 }: HomeScreenProps): React.JSX.Element {
-  const [recent, setRecent] = useState<RecentFile[]>([])
   /**
-   * Clearing is not undoable, and the list sits one careless click from the
-   * files themselves — so the control arms first and acts on the second click.
-   * Not a dialog: §8 bans the native one, and the in-app prompt is the shape
-   * reserved for unsaved work, which this is not.
+   * `null` until main answers, which is not the same as "no recent files": the
+   * empty line would otherwise flash on every mount before the list arrives.
+   */
+  const [recent, setRecent] = useState<RecentFile[] | null>(null)
+  /**
+   * Clearing is not undoable, and the control sits one careless click from the
+   * files themselves — so it arms first and acts on the second click. Not a
+   * dialog: §8 bans the native one, and the in-app prompt is the shape reserved
+   * for unsaved work, which this is not.
    */
   const [armed, setArmed] = useState(false)
 
   useEffect(() => {
     let cancelled = false
     void window.margin.files.recent().then((list) => {
-      if (!cancelled) setRecent(list.slice(0, 5))
+      if (!cancelled) setRecent(list.slice(0, SHOWN))
     })
     return () => {
       cancelled = true
@@ -86,23 +99,18 @@ export function HomeScreen({
         </div>
 
         <h1 className="home__wordmark">margin</h1>
-        <p className="home__line">No document open.</p>
 
         <div className="home__actions">
-          <button type="button" className="home__action" onClick={onNew}>
-            <span>New Document</span>
-            {newAccelerator ? <span className="kbd">{newAccelerator}</span> : null}
-          </button>
           <button type="button" className="home__action" onClick={onOpen}>
             <span>Open File…</span>
             {openAccelerator ? <span className="kbd">{openAccelerator}</span> : null}
           </button>
         </div>
 
-        {recent.length > 0 ? (
-          <div className="home__recent">
-            <div className="home__recentHead">
-              <span className="home__recentLabel">Recent</span>
+        <div className="home__recent">
+          <div className="home__recentHead">
+            <span className="home__recentLabel">Recent</span>
+            {recent && recent.length > 0 ? (
               <button
                 type="button"
                 className="home__recentClear"
@@ -113,7 +121,12 @@ export function HomeScreen({
               >
                 {armed ? 'Confirm' : 'Clear'}
               </button>
-            </div>
+            ) : null}
+          </div>
+
+          {recent === null ? null : recent.length === 0 ? (
+            <p className="home__recentEmpty">No recent history.</p>
+          ) : (
             <ul className="home__recentList">
               {recent.map((entry) => (
                 <li key={entry.path}>
@@ -131,8 +144,12 @@ export function HomeScreen({
                 </li>
               ))}
             </ul>
-          </div>
-        ) : null}
+          )}
+        </div>
+
+        <button type="button" className="home__sample" onClick={onOpenSample}>
+          Open the sample document
+        </button>
       </div>
     </div>
   )

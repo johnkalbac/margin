@@ -221,6 +221,16 @@ export interface MarginBridge {
     recent(): Promise<RecentFile[]>
     /** Resolves to the emptied list, so the caller can render the result it was handed. */
     clearRecent(): Promise<RecentFile[]>
+    /**
+     * The disk path behind a dropped `File`, or '' when it has none.
+     *
+     * Electron ≥32 removed `File.path`, and the sandboxed renderer cannot read
+     * paths off a File any other way — webUtils.getPathForFile only runs in the
+     * preload, so the bridge exists. Synthetic Files (constructed in JS, paste
+     * buffers) have no backing path: getPathForFile yields '' for those, and the
+     * try/catch is for whichever Electron build decides to throw instead.
+     */
+    pathForFile(file: File): string
   }
   readonly compare: {
     /** Choose a file to compare against. Null when the dialog was cancelled. */

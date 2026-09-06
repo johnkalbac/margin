@@ -15,6 +15,7 @@ import { windowTitle } from '@shared/branding'
 import { isEncoding, type Encoding } from '@core/text/encoding'
 import type { DocId, DocMeta } from '@shared/types'
 
+import { OPENABLE_EXTENSIONS } from '@shared/openable'
 import { DocumentRegistry, resolveKey } from './DocumentRegistry'
 import { FileWatcher, readTextFile, writeTextFile } from './FileService'
 import { HistoryService, type HistoryVersion } from './HistoryService'
@@ -36,8 +37,13 @@ import { openExternalSafely } from './security'
  * publishes on it all exist from day one (§2).
  */
 
+/**
+ * The Open/Save dialogs' file types. The extension list is argvFiles', so the
+ * dialog, the command line and the Windows file association can never drift to
+ * disagree about what Margin opens — a second copied list always does.
+ */
 const MARKDOWN_FILTERS = [
-  { name: 'Markdown', extensions: ['md', 'markdown', 'mdown', 'mkd', 'txt'] },
+  { name: 'Markdown', extensions: [...OPENABLE_EXTENSIONS] },
   { name: 'All Files', extensions: ['*'] }
 ]
 
@@ -257,6 +263,54 @@ async function chooseAndOpen(
   } catch (error) {
     return failed(error)
   }
+}
+
+// ── Pushing documents to a window ───────────────────────────────────────────
+
+/**
+ * Push opened documents at a window, whenever its renderer is listening.
+ *
+ * `doc:opened` is fire-and-forget over `webContents.send`: a message delivered
+ * before the renderer has mounted its `onOpened` subscription is gone, with no
+ * resend and no error. Every pusher therefore goes through here — a window
+ * still loading gets the payloads queued onto its `did-finish-load` (the same
+ * handover the docOpen/docMoveTab flows already used), and one that has long
+ * since loaded receives them immediately.
+ */
+function sendDocOpened(window: BrowserWindow, payloads: DocumentPayload[]): void {
+  if (payloads.length === 0 || window.isDestroyed()) return
+
+  if (window.webContents.isLoading()) {
+    window.webContents.once('did-finish-load', () => {
+      if (!window.isDestroyed()) window.webContents.send(IPC.docOpened, payloads)
+    })
+    return
+  }
+
+  window.webContents.send(IPC.docOpened, payloads)
+}
+
+/**
+ * Open paths on the application's behalf and show them in one window (§2).
+ *
+ * The entry point for file launches main initiates rather than a renderer
+ * asking for: the cold-start argv, and Windows 'Open with > Margin' re-activating
+ * a running instance. Reads go through `chooseAndOpen` — the same path the Open
+ * dialog and Open Recent use, so the registry keeps its one-tab invariant even
+ * when the file was already open in another window's tab. Unreadable paths
+ * (deleted between the click and our read) are skipped rather than failing the
+ * rest of the batch; a file that no longer exists has no tab to open.
+ */
+export async function openFilesInWindow(window: BrowserWindow, paths: string[]): Promise<void> {
+  const opened: Array<DocumentPayload & { alreadyOpen: boolean }> = []
+  for (const path of paths) {
+    const result = await chooseAndOpen(window, path)
+    if (result.ok) opened.push(...result.value)
+  }
+
+  // One batch, so the renderer activates the last file and notices the encoding
+  // guess once, not per file.
+  sendDocOpened(window, opened)
 }
 
 // ── Registration ────────────────────────────────────────────────────────────
