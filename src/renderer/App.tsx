@@ -474,7 +474,7 @@ export function App(): React.JSX.Element {
   }, [adopt])
 
   /**
-   * The home screen's one way in: the sample markdown as an untitled buffer.
+   * The home screen's quietest way in: the sample markdown as an untitled buffer.
    *
    * This is the old boot seed moved behind a click. The text is renderer-side —
    * buffer content, not a file — so saving it prompts for a path like any
@@ -484,6 +484,26 @@ export function App(): React.JSX.Element {
   const openSample = useCallback(async (): Promise<void> => {
     adopt([await window.margin.doc.create()], WELCOME_DOCUMENT)
   }, [adopt])
+
+  /**
+   * Open one known path — the home screen's recent list.
+   *
+   * Same handler the drop path and main's Open Recent use, so an already-open
+   * file activates its tab instead of registering a second time (§2), and a
+   * recent entry naming a file that has since moved reports rather than
+   * silently doing nothing.
+   */
+  const openPath = useCallback(
+    async (path: string): Promise<void> => {
+      const result = await window.margin.doc.open(path)
+      if (!result.ok) {
+        setNotice({ message: 'Could not open the file.', detail: result.error })
+        return
+      }
+      adopt(result.value)
+    },
+    [adopt]
+  )
 
   const openDocument = useCallback(async (): Promise<void> => {
     const result = await window.margin.doc.open()
@@ -1047,7 +1067,12 @@ export function App(): React.JSX.Element {
       ) : null}
 
       {documents.length === 0 ? (
-        <HomeScreen onOpenSample={() => void openSample()} />
+        <HomeScreen
+          onOpen={() => void openDocument()}
+          onOpenPath={(path) => void openPath(path)}
+          onOpenSample={() => void openSample()}
+          openAccelerator={focusAccelerator('file.open')}
+        />
       ) : (
       <div className="panes" ref={panesRef}>
         <EditorPane

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import { act, renderHook } from '@testing-library/react'
+import { StrictMode } from 'react'
+import { act, cleanup, render, renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { EditorSelection } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
@@ -45,6 +46,8 @@ const callbacks = {
 }
 
 afterEach(() => {
+  // globals: false disables testing-library's own afterEach cleanup.
+  cleanup()
   vi.clearAllMocks()
 })
 
@@ -150,6 +153,109 @@ describe('document switching', () => {
       host.result.current.activateDocument('a')
     })
     expect(host.result.current.getContent()).toBe('replaced')
+  })
+})
+
+/**
+ * Mounting the host after a document is already active (§4.1).
+ *
+ * Since the home screen, the panes are unmounted whenever the window holds no
+ * document, so the first document of a window is opened and activated a render
+ * *before* `attach` runs — and React can detach and reattach that ref without
+ * the document ever stopping being the active one. StrictMode does exactly that
+ * on every mount in development: attach, detach, attach again.
+ *
+ * So `attach` is the only thing that decides what the new view mounts with, and
+ * the record it reads from has to survive the detach. It did not, which left a
+ * mounted editor showing nothing while the preview beside it showed the file.
+ */
+describe('attaching after a document is active', () => {
+  function bareHost() {
+    return renderHook(() => useEditorHost({ mode: 'light', callbacks }))
+  }
+
+  function element(): HTMLDivElement {
+    const node = document.createElement('div')
+    document.body.appendChild(node)
+    return node
+  }
+
+  it('mounts the state that was activated before the view existed', () => {
+    const host = bareHost()
+
+    act(() => {
+      host.result.current.openDocument('a', '# alpha')
+      host.result.current.activateDocument('a')
+    })
+    // No view yet: the activation is an intent, not a setState.
+    expect(host.result.current.getContent()).toBeNull()
+
+    act(() => {
+      host.result.current.attach(element())
+    })
+    expect(host.result.current.getContent()).toBe('# alpha')
+  })
+
+  it('survives a detach and reattach, as StrictMode performs on every mount', () => {
+    const host = bareHost()
+    const node = element()
+
+    act(() => {
+      host.result.current.openDocument('a', '# alpha')
+      host.result.current.activateDocument('a')
+      host.result.current.attach(node)
+    })
+    expect(host.result.current.getContent()).toBe('# alpha')
+
+    // React's simulated remount: the ref is called with null, then with the
+    // element again. The document is still the window's active one throughout.
+    act(() => {
+      host.result.current.attach(null)
+      host.result.current.attach(node)
+    })
+    expect(host.result.current.getContent()).toBe('# alpha')
+  })
+
+  it('carries the live buffer across a remount, not the stale map entry', () => {
+    const host = bareHost()
+    const node = element()
+
+    act(() => {
+      host.result.current.openDocument('a', 'alpha')
+      host.result.current.activateDocument('a')
+      host.result.current.attach(node)
+    })
+
+    // Edited after the state was last written to the Map, which only happens on
+    // a switch away — so the Map's copy is one edit behind the view.
+    act(() => {
+      host.result.current.getView()?.dispatch({ changes: { from: 5, insert: ' edited' } })
+    })
+
+    act(() => {
+      host.result.current.attach(null)
+      host.result.current.attach(node)
+    })
+    expect(host.result.current.getContent()).toBe('alpha edited')
+  })
+
+  it('mounts empty when the last document closed before the pane unmounted', () => {
+    const host = bareHost()
+    const node = element()
+
+    act(() => {
+      host.result.current.openDocument('a', 'alpha')
+      host.result.current.activateDocument('a')
+      host.result.current.attach(node)
+      // Closing the last tab unmounts the panes, which detaches the ref.
+      host.result.current.closeDocument('a')
+      host.result.current.attach(null)
+    })
+
+    act(() => {
+      host.result.current.attach(element())
+    })
+    expect(host.result.current.getContent()).toBe('')
   })
 })
 
@@ -378,5 +484,77 @@ describe('runCommand (§7)', () => {
       host.result.current.activateDocument('a')
     })
     expect(host.result.current.runCommand('edit.notACommand')).toBe(false)
+  })
+})
+
+/**
+ * The same thing again, but driven by React rather than by hand.
+ *
+ * The sequence above is what StrictMode performs on every mount in development,
+ * so this mounts the pane the way the window does — home screen first, then the
+ * document, then the pane that hosts the view — inside a real <StrictMode>. It
+ * is the shape of the actual bug: `npm run dev` showed the buffer for one frame
+ * and then an empty editor beside a preview full of the file, while the
+ * production build (no double-invoke) was fine, which is why nothing in
+ * `npm run check` caught it.
+ */
+describe('mounting the pane under StrictMode', () => {
+  it('keeps the buffer through the development remount', () => {
+    // Definite assignment: it is set while <Harness /> renders, which TS cannot
+    // see from here, and a `| null` union narrows to never at the reads below.
+    let host!: ReturnType<typeof useEditorHost>
+    const refCalls: string[] = []
+
+    // A component, not an inline element: the window swaps <HomeScreen /> for
+    // the panes, and swapping an element *type* is what makes React unmount and
+    // remount rather than update in place — which is what gets StrictMode to
+    // run its double attach at all. A div-for-div swap would update the same
+    // node, call the ref once, and quietly test nothing.
+    function Home(): React.JSX.Element {
+      return <div className="home" />
+    }
+
+    function Harness({ open }: { open: boolean }): React.JSX.Element {
+      const editor = useEditorHost({ mode: 'light', callbacks })
+      host = editor
+      const attach = (element: HTMLDivElement | null): void => {
+        refCalls.push(element ? 'attach' : 'detach')
+        editor.attach(element)
+      }
+      // The panes are unmounted whenever the window holds no document (§4.1).
+      return open ? (
+        <div className="panes">
+          <div className="editor__host" ref={attach} />
+        </div>
+      ) : (
+        <Home />
+      )
+    }
+
+    const view = render(
+      <StrictMode>
+        <Harness open={false} />
+      </StrictMode>
+    )
+
+    // What clicking the home screen does: register and activate the document,
+    // then re-render with the panes present.
+    act(() => {
+      host.openDocument('a', '# alpha')
+      host.activateDocument('a')
+    })
+    act(() => {
+      view.rerender(
+        <StrictMode>
+          <Harness open={true} />
+        </StrictMode>
+      )
+    })
+
+    // The guard on the assertion below: if React ever stops remounting here,
+    // this test would pass for the wrong reason and stop covering the bug.
+    expect(refCalls).toEqual(['attach', 'detach', 'attach'])
+    expect(host.getContent()).toBe('# alpha')
+    expect(document.querySelectorAll('.cm-editor')).toHaveLength(1)
   })
 })

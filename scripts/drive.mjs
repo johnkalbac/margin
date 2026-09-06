@@ -57,6 +57,20 @@ function check(name, ok, detail = '') {
 
 // A scratch file the app will open and save, so the file layer runs for real.
 const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'margin-e2e-'))
+/*
+ * The run gets its own userData directory, for two reasons.
+ *
+ * Electron keys `requestSingleInstanceLock` on userData, so sharing the app's
+ * real one means this driver dies on launch — silently, as a Playwright
+ * "target closed" — whenever the developer happens to have Margin open. A
+ * harness that cannot run while you are using the app is a harness that does
+ * not run.
+ *
+ * It also makes the state the app reads back its own: settings, the recent
+ * list, the window rectangle and the history journal all start empty here, so
+ * "no recent history" is a fact about this run rather than about the machine.
+ */
+const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'margin-e2e-data-'))
 const scratchFile = path.join(workDir, 'notes.md')
 const compareFile = path.join(workDir, 'other.md')
 // CRLF on purpose: the EOL round trip is a Phase 2 claim worth exercising live.
@@ -154,7 +168,7 @@ async function shutdown() {
 try {
   app = await electron.launch({
     executablePath: path.join(APP_DIR, ELECTRON_BIN),
-    args: [APP_DIR],
+    args: [APP_DIR, `--user-data-dir=${userDataDir}`],
     env,
     timeout: 60_000
   })
@@ -175,18 +189,30 @@ try {
     actions: [...document.querySelectorAll('.home__action')].map((b) =>
       b.textContent?.replace(/\s+/g, ' ').trim()
     ),
+    recentEmpty: document.querySelector('.home__recentEmpty')?.textContent ?? null,
+    recentItems: document.querySelectorAll('.home__recentItem').length,
+    sample: document.querySelector('.home__sample')?.textContent ?? null,
     theme: document.documentElement.dataset.theme ?? null
   }))
   check('boots with no document tab', landing.tabs === 0, `${landing.tabs} tabs`)
-  check('the home screen offers only the sample link',
-    landing.actions.length === 1 && landing.actions[0] === 'Open the sample document',
+  check('the home screen leads with Open File… and its accelerator',
+    // No space between the label and the cap: they are adjacent spans.
+    landing.actions.length === 1 && /^Open File…(Cmd|Ctrl) O$/.test(landing.actions[0] ?? ''),
     landing.actions.join(' | '))
+  // A userData directory made moments ago has no recent list, so this is the
+  // first-run state a user actually meets — an empty list that says so, rather
+  // than a section that renders nothing and reads as broken.
+  check('an empty recent list says so rather than vanishing',
+    landing.recentItems === 0 && landing.recentEmpty === 'No recent history.',
+    `${landing.recentItems} entries, empty=${landing.recentEmpty}`)
+  check('the sample link sits at the foot', landing.sample === 'Open the sample document',
+    String(landing.sample))
   check('theme applied from settings', landing.theme === 'light' || landing.theme === 'dark', landing.theme)
 
   // The link seeds the sample markdown as an untitled document — the same
   // renderer-side seed boot used to perform unasked. Named "Untitled", not
   // "Untitled 2": a second create would leak a document in main's registry.
-  await page.evaluate(() => document.querySelector('.home__action')?.click())
+  await page.evaluate(() => document.querySelector('.home__sample')?.click())
   const ready = await until(() => !!document.querySelector('.cm-editor'), '.cm-editor', 20_000)
   check('the sample link opens a document and the editor mounts', ready)
 
@@ -195,12 +221,20 @@ try {
     tabName: document.querySelector('.tab__name')?.textContent ?? null,
     panes: document.querySelectorAll('.pane').length,
     footer: !!document.querySelector('.footer'),
+    editorText: document.querySelector('.cm-content')?.textContent ?? null,
     previewBlocks: document.querySelectorAll('.markdown > *').length,
     save: document.querySelector('.footer__save')?.textContent ?? null
   }))
   check('the sample opens as exactly one tab, named Untitled',
     shell.tabs === 1 && shell.tabName === 'Untitled', `name=${shell.tabName}`)
   check('both panes and the footer render', shell.panes === 2 && shell.footer)
+  // Not just that the view mounted — that it mounted holding the document. This
+  // is the first open of the window, where the panes mount around a document
+  // that is already active, and an empty buffer beside a full preview is the
+  // exact shape of the bug that path produced.
+  check('the editor holds the sample, not an empty buffer',
+    (shell.editorText ?? '').includes('# Margin'),
+    `${(shell.editorText ?? '').length} chars`)
   check('preview rendered the welcome document', shell.previewBlocks > 5, `${shell.previewBlocks} blocks`)
 
   // ── Drag-and-drop affordance ─────────────────────────────────────────────
@@ -576,7 +610,7 @@ try {
     actions: [...document.querySelectorAll('.home__action')].map((b) =>
       b.textContent?.replace(/\s+/g, ' ').trim()
     ),
-    recent: document.querySelectorAll('.home__recentItem').length,
+    recent: [...document.querySelectorAll('.home__recentName')].map((n) => n.textContent),
     footerItems: [...document.querySelectorAll('.footer__state .footer__item')].map(
       (n) => n.textContent
     ),
@@ -585,13 +619,14 @@ try {
   check('closing the last tab shows the home screen (§4.1)',
     home && homeState.tabs === 0 && homeState.panes === 0,
     `tabs=${homeState.tabs} panes=${homeState.panes}`)
-  check('home screen shows the mark and only the sample link',
+  check('home screen shows the mark, Open File… and the sample link',
     homeState.mark && homeState.wordmark === 'margin' &&
-      homeState.actions.length === 1 && homeState.actions[0] === 'Open the sample document',
+      homeState.actions.length === 1 && /^Open File…/.test(homeState.actions[0] ?? ''),
     homeState.actions.join(' | '))
-  // The recent list left the home screen; main still records recent files, the
-  // menu's Open Recent still reads them.
-  check('home screen lists no recent files', homeState.recent === 0, `${homeState.recent} entries`)
+  // This run has opened notes.md for real by now, so the list main records is
+  // the list the home screen draws — the same one the menu's Open Recent reads.
+  check('the recent list carries the file this run opened',
+    homeState.recent.includes('notes.md'), homeState.recent.join(' | '))
   check('footer reports no document state on the home screen',
     homeState.footerItems.length === 1,
     homeState.footerItems.join(' · '))
@@ -604,8 +639,24 @@ try {
   await page.evaluate(() => window.margin.settings.set({ theme: 'light' }))
   await until(() => document.documentElement.dataset.theme === 'light', 'light', 6000)
 
-  // And the home screen's link opens a document.
-  await page.evaluate(() => document.querySelector('.home__action')?.click())
+  // A recent entry opens the file it names — through doc.open(path), the same
+  // handler the menu's Open Recent and a drop take, so §2's one-tab invariant
+  // holds no matter which surface asked.
+  await page.evaluate(() => {
+    const rows = [...document.querySelectorAll('.home__recentItem')]
+    rows.find((row) => row.textContent?.includes('notes.md'))?.click()
+  })
+  const reopened = await until(
+    () => document.querySelector('.tab__name')?.textContent === 'notes.md', 'notes.md tab', 8000
+  )
+  check('a recent entry reopens its file from the home screen', reopened)
+
+  // Clean, since it came off disk — closing goes straight back to home.
+  await menuClick('file.closeTab')
+  await until(() => !!document.querySelector('.home'), 'home again', 8000)
+
+  // And the home screen's sample link opens a document.
+  await page.evaluate(() => document.querySelector('.home__sample')?.click())
   const madeOne = await until(() => document.querySelectorAll('.tab').length === 1, 'new tab', 8000)
   check('the sample link on the home screen opens a document', madeOne)
 

@@ -955,6 +955,40 @@ button.footer__item:hover {
   background: var(--hairline);
 }
 
+/*
+ * Nothing opened yet. It sits where the first entry would, at the list's own
+ * size and one rung quieter, so a first run reads as an empty list rather than
+ * as a missing section.
+ */
+.home__recentEmpty {
+  margin: 0;
+  padding: 7px 4px;
+  font: var(--type-meta);
+  color: var(--ui-quiet);
+}
+
+/*
+ * The sample. Last and quietest — a text link, not a row: it is the start for
+ * someone with nothing to open, and a returning user should read past it. The
+ * underline arrives on hover, which is the system's whole link treatment.
+ */
+.home__sample {
+  margin-top: 26px;
+  padding: 0;
+  background: none;
+  border: none;
+  border-bottom: 1px solid transparent;
+  cursor: default;
+  font: var(--type-meta);
+  color: var(--ui-quiet);
+  transition: color var(--duration-fast) var(--ease-standard);
+}
+
+.home__sample:hover {
+  color: var(--ink);
+  border-bottom-color: var(--divider);
+}
+
 /* ── Confirm dialog ─────────────────────────────────────────────────────── */
 
 /*
