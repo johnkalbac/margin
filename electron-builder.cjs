@@ -38,17 +38,20 @@ const binary = branding.binaryName
  */
 const STORE = {
   /** Apple Developer > Membership details > Team ID (ten characters). */
-  appleTeamId: 'REPLACE_TEAM_ID',
+  appleTeamId: 'P92RML36N5',
   /** Partner Center > Product management > Product identity. */
-  msIdentityName: 'REPLACE-PackageIdentityName',
-  msPublisher: 'CN=REPLACE-PublisherId',
+  msIdentityName: 'JohnKalbac.MarginMarkdownEditor',
+  msPublisher: 'CN=499F155C-F04C-417B-9297-7EDE5471EC5A',
   msPublisherDisplayName: 'John Kalbac',
   /**
-   * Must EQUAL a name reserved in Partner Center, not merely resemble it. If
-   * "Margin" is taken and the reservation is longer, it goes here — the app's
-   * own window and menus keep productName.
+   * branding.json's storeName — the name reserved in Partner Center, which the
+   * package's DisplayName must EQUAL, not merely resemble. electron-builder's
+   * manifest template writes the same value as the Start menu name, so Start
+   * reads "Margin Markdown Editor" too; the window, menus and title bar keep
+   * productName. (On the Mac the store name lives only in App Store Connect,
+   * and the bundle keeps productName.)
    */
-  msDisplayName: branding.productName
+  msDisplayName: branding.storeName
 }
 
 /** @type {import('electron-builder').Configuration} */

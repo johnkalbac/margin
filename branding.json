@@ -1,5 +1,6 @@
 {
   "productName": "Margin",
+  "storeName": "Margin Markdown Editor",
   "binaryName": "margin",
   "appId": "com.johnkalbac.margin",
   "tagline": "Live two-panel Markdown.",

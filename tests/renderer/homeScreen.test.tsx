@@ -3,7 +3,14 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { HomeScreen } from '@renderer/components/HomeScreen'
-import { COPYRIGHT, LICENSE, LICENSE_URL, SOURCE_URL, VERSION } from '@shared/branding'
+import {
+  COPYRIGHT,
+  LICENSE,
+  LICENSE_URL,
+  PRIVACY_URL,
+  SOURCE_URL,
+  VERSION
+} from '@shared/branding'
 import type { RecentFile } from '@shared/ipc'
 
 /**
@@ -172,7 +179,7 @@ describe('HomeScreen', () => {
     expect(container.querySelector('.home__line')).toBeNull()
   })
 
-  it('shows the version, source, copyright and license at its foot', () => {
+  it('shows the version, source, copyright, license and privacy at its foot', () => {
     const openExternal = vi.fn(async () => true)
     ;(window as unknown as { margin: { shell: unknown } }).margin.shell = { openExternal }
 
@@ -188,13 +195,14 @@ describe('HomeScreen', () => {
     const footer = container.querySelector('.home__footer')
     // Read from package.json and branding.json, never retyped here.
     expect(footer?.textContent).toBe(
-      `Version ${VERSION}·Source code·${COPYRIGHT}·${LICENSE} License`
+      `Version ${VERSION}·Source code·${COPYRIGHT}·${LICENSE} License·Privacy`
     )
     expect(LICENSE).toBe('MIT')
 
     const links: Array<[string, string]> = [
       ['Source code', SOURCE_URL],
-      ['MIT License', LICENSE_URL]
+      ['MIT License', LICENSE_URL],
+      ['Privacy', PRIVACY_URL]
     ]
     for (const [name, url] of links) {
       const link = screen.getByRole('link', { name })

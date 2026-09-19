@@ -1,6 +1,13 @@
 import { useEffect, useState } from 'react'
 
-import { COPYRIGHT, LICENSE, LICENSE_URL, SOURCE_URL, VERSION } from '@shared/branding'
+import {
+  COPYRIGHT,
+  LICENSE,
+  LICENSE_URL,
+  PRIVACY_URL,
+  SOURCE_URL,
+  VERSION
+} from '@shared/branding'
 import type { RecentFile } from '@shared/ipc'
 import { LogoMark } from './Logo'
 
@@ -159,8 +166,9 @@ export function HomeScreen({
 }
 
 /**
- * Version, source, copyright and license — the colophon, pinned to the foot of
- * the panel.
+ * Version, source, copyright, license and privacy — the colophon, pinned to the
+ * foot of the panel. The privacy link is not optional: App Review requires the
+ * policy be reachable from inside the app.
  *
  * Read in passing, so it sits a size below everything above it. Each link is an
  * anchor because it goes somewhere, but the click is handed to main rather than
@@ -178,6 +186,8 @@ function HomeFooter(): React.JSX.Element {
       <span>{COPYRIGHT}</span>
       <FooterSep />
       <ExternalLink href={LICENSE_URL}>{LICENSE} License</ExternalLink>
+      <FooterSep />
+      <ExternalLink href={PRIVACY_URL}>Privacy</ExternalLink>
     </footer>
   )
 }

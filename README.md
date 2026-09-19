@@ -123,6 +123,60 @@ src/
 ```
 
 
+## Privacy
+
+Margin does not collect, transmit or share any information about you or your
+documents. It has no accounts, analytics, telemetry, advertising or crash
+reporting, and it makes no network requests of its own. Opening a document
+never fetches anything: the preview does not load remote images or any other
+remote content.
+
+Everything Margin stores stays on your computer:
+
+- **Edit history.** A copy of each change to every file you open, which powers
+  the history sidebar and compare. It is kept in Margin's data folder, not next
+  to your files, and it is **not encrypted**. Deleting or moving a file does not
+  delete its history.
+- **Settings.** Your preferences (theme, auto-save), the window's size and
+  position, and the paths of recently opened files. The Mac App Store version
+  also keeps the macOS permissions that let it reopen those recent files.
+
+| Version | Data folder |
+| --- | --- |
+| Windows installer | `%APPDATA%\Margin` |
+| Microsoft Store | `%LOCALAPPDATA%\Packages\<Margin package>\LocalCache\Roaming\Margin` |
+| macOS download | `~/Library/Application Support/Margin` |
+| Mac App Store | `~/Library/Containers/com.johnkalbac.margin/Data/Library/Application Support/Margin` |
+
+History is kept until you delete it, except that a file with a very long
+history has its oldest entries discarded once they pass roughly 80 MB. Delete
+the data folder to remove all history and settings. Uninstalling the Microsoft
+Store version deletes it for you; the other versions leave it in place.
+
+Because nothing is ever sent to the developer or to any third party, there is
+no copy anywhere else to request, correct or delete, and no third party with
+access to your data.
+
+Two things happen outside Margin itself:
+
+- Clicking a web link in a document opens it in your default browser.
+- Spell checking comes from macOS on a Mac, and from Chromium (the engine
+  Margin is built on) on Windows. On Windows, Chromium may download a spelling
+  dictionary from Google the first time one is needed. Nothing you type is sent.
+
+Questions about privacy: [open an issue](https://github.com/johnkalbac/margin/issues).
+
+_Last updated 19 September 2026._
+
+
+## Support
+
+To report a bug, ask a question or suggest a feature,
+[open an issue on GitHub](https://github.com/johnkalbac/margin/issues). Please
+include your Margin version (shown at the bottom of the home screen) and your
+operating system.
+
+
 ## License
 
 [MIT](LICENSE) © 2026 John Kalbac.

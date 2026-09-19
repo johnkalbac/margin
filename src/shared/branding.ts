@@ -26,6 +26,13 @@ export const VERSION: string = version
 export const LICENSE: string = license
 /** The LICENSE file on the default branch — the text the id stands for. */
 export const LICENSE_URL = `${SOURCE_URL}/blob/main/LICENSE`
+/**
+ * The privacy policy: the README's `## Privacy` section, which GitHub anchors as
+ * #privacy. App Review (5.1.1(i)) requires it be reachable from inside the app,
+ * and it is the URL entered in App Store Connect and Partner Center — rename
+ * that heading and both stores' links break.
+ */
+export const PRIVACY_URL = `${SOURCE_URL}#privacy`
 
 /** Window title. Dirty documents are prefixed with a bullet (plan §8). */
 export function windowTitle(documentName: string | null, dirty: boolean): string {
