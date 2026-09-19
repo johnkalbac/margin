@@ -3,15 +3,22 @@ import { useCallback, useRef, useState } from 'react'
 /**
  * Draggable pane divider (design 3e).
  *
- * Drag to resize; double-click restores 50/50. Panels have a minimum width
- * (--pane-min-width) before the divider snaps the layout into focus view, which
- * is how the design lets a drag express "I only want one pane" without a
- * separate control.
+ * Drag to resize; double-click restores 50/50. Neither pane can be dragged
+ * narrower than MIN_RATIO of the split — the divider stops there. Carrying the
+ * pointer on past a pane's minimum width (--pane-min-width) snaps the layout
+ * into focus view, which is how the design lets a drag express "I only want one
+ * pane" without a separate control.
  */
 
+/** Smallest share of the split either pane can be dragged to. */
+export const MIN_RATIO = 0.2
+export const MAX_RATIO = 1 - MIN_RATIO
+
+export function clampRatio(ratio: number): number {
+  return Math.min(MAX_RATIO, Math.max(MIN_RATIO, ratio))
+}
+
 interface DividerProps {
-  /** Container the ratio is measured against. */
-  containerRef: React.RefObject<HTMLElement | null>
   onRatioChange: (ratio: number) => void
   onReset: () => void
   /** Called when a drag crosses the minimum width on either side. */
@@ -20,7 +27,6 @@ interface DividerProps {
 }
 
 export function Divider({
-  containerRef,
   onRatioChange,
   onReset,
   onSnapToFocus,
@@ -31,22 +37,27 @@ export function Divider({
 
   const onPointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
-      const container = containerRef.current
-      if (!container) return
+      // React clears currentTarget once this handler returns, so the move
+      // listener below must not read it from the event.
+      const handle = event.currentTarget
+      const before = handle.previousElementSibling
+      const after = handle.nextElementSibling
+      if (!before || !after) return
 
       event.preventDefault()
-      event.currentTarget.setPointerCapture(event.pointerId)
+      handle.setPointerCapture(event.pointerId)
       setDragging(true)
       snappedRef.current = false
 
-      const bounds = container.getBoundingClientRect()
-      // The divider occupies width the panes cannot use.
-      const usable = bounds.width - event.currentTarget.offsetWidth
+      // Measured against the two panes, not the whole row: the row also holds
+      // the shell padding and, when open, the history sidebar.
+      const start = before.getBoundingClientRect().left
+      const usable = before.getBoundingClientRect().width + after.getBoundingClientRect().width
+      const half = handle.offsetWidth / 2
 
       const onMove = (move: PointerEvent): void => {
         if (snappedRef.current) return
-        const offset = move.clientX - bounds.left
-        const left = offset - event.currentTarget.offsetWidth / 2
+        const left = move.clientX - start - half
 
         if (left < minWidth / 2) {
           snappedRef.current = true
@@ -59,19 +70,21 @@ export function Divider({
           return
         }
 
-        onRatioChange(Math.min(0.85, Math.max(0.15, left / usable)))
+        onRatioChange(clampRatio(left / usable))
       }
 
       const onUp = (): void => {
         setDragging(false)
         window.removeEventListener('pointermove', onMove)
         window.removeEventListener('pointerup', onUp)
+        window.removeEventListener('pointercancel', onUp)
       }
 
       window.addEventListener('pointermove', onMove)
       window.addEventListener('pointerup', onUp)
+      window.addEventListener('pointercancel', onUp)
     },
-    [containerRef, minWidth, onRatioChange, onSnapToFocus]
+    [minWidth, onRatioChange, onSnapToFocus]
   )
 
   return (

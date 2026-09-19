@@ -382,10 +382,11 @@ try {
   )
 
   // Opening a file whose encoding was sniffed rather than declared says so
-  // (§6). True, and worth saying in the app; noise in a teaser, and it would
-  // push the panes down for the first third of the run.
-  await page.evaluate(() => document.querySelector('.notice__action--quiet')?.click())
-  await until(() => !document.querySelector('.notice'), 'the encoding notice to clear')
+  // (§6), in a toast. True, and worth saying in the app; noise in a teaser, and
+  // it would sit over the panes for the first seconds of the run. A click
+  // clears it without waiting out its timer.
+  await page.evaluate(() => document.querySelector('.toast')?.click())
+  await until(() => !document.querySelector('.toast'), 'the encoding toast to clear')
 
   // The caret blinks, and a stepped capture would catch it at random — flicker
   // in the picture, and a changed region in every single frame for the encoder

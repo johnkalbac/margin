@@ -237,6 +237,42 @@ try {
     `${(shell.editorText ?? '').length} chars`)
   check('preview rendered the welcome document', shell.previewBlocks > 5, `${shell.previewBlocks} blocks`)
 
+  // ── Pane divider ──────────────────────────────────────────────────────────
+  // Real pointer input, not dispatched events: the drag listeners outlive the
+  // React handler that installs them, which is exactly where it once broke.
+  const geometry = () => page.evaluate(() => {
+    const [editor, preview] = [...document.querySelectorAll('.pane')].map((p) => p.getBoundingClientRect())
+    const divider = document.querySelector('.divider')?.getBoundingClientRect()
+    return {
+      left: editor.left,
+      usable: editor.width + preview.width,
+      share: editor.width / (editor.width + preview.width),
+      dividerX: divider ? divider.left + divider.width / 2 : null,
+      dividerY: divider ? divider.top + divider.height / 2 : null
+    }
+  })
+  const dragDividerTo = async (x) => {
+    const g = await geometry()
+    await page.mouse.move(g.dividerX, g.dividerY)
+    await page.mouse.down()
+    await page.mouse.move(x, g.dividerY, { steps: 8 })
+    await page.mouse.up()
+    return geometry()
+  }
+  const g0 = await geometry()
+  const widened = await dragDividerTo(g0.left + g0.usable * 0.35)
+  check('dragging the divider resizes the panes',
+    Math.abs(widened.share - 0.35) < 0.05, `editor share ${widened.share.toFixed(3)}`)
+  // Just short of the snap-to-focus threshold: the divider stops at the limit.
+  const clamped = await dragDividerTo(g0.left + 170)
+  check('the divider stops at the 20% limit',
+    clamped.share >= 0.195 && clamped.share < 0.3 && (await page.evaluate(() => document.querySelectorAll('.divider').length)) === 1,
+    `editor share ${clamped.share.toFixed(3)}`)
+  await page.mouse.dblclick(clamped.dividerX, clamped.dividerY)
+  const reset = await geometry()
+  check('double-clicking the divider restores 50/50',
+    Math.abs(reset.share - 0.5) < 0.02, `editor share ${reset.share.toFixed(3)}`)
+
   // ── Drag-and-drop affordance ─────────────────────────────────────────────
   // A real file drop is NOT drivable from here: webUtils.getPathForFile returns
   // '' for any File constructed in JS, so no synthetic drop can carry a path.

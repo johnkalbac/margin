@@ -10,7 +10,7 @@ import type { DocId, DocMeta, Encoding, PaneFocus, ThemeMode } from '@shared/typ
 
 import { CommandPalette } from './components/CommandPalette'
 import { ConfirmDialog, type ConfirmRequest } from './components/ConfirmDialog'
-import { Divider } from './components/Divider'
+import { Divider, clampRatio } from './components/Divider'
 import { EditorPane } from './components/EditorPane'
 import { HistorySidebar } from './components/HistorySidebar'
 import { HomeScreen } from './components/HomeScreen'
@@ -19,6 +19,7 @@ import { PreviewPane } from './components/PreviewPane'
 import { StatusBar } from './components/StatusBar'
 import { TabStrip } from './components/TabStrip'
 import { TitleBar } from './components/TitleBar'
+import { Toast } from './components/Toast'
 import { createCommandRegistry, type AppContext } from './commands/appCommands'
 import { droppedPaths } from './files/drop'
 import { useEditorHost } from './editor/useEditorHost'
@@ -45,6 +46,13 @@ interface NoticeState {
   actions?: NoticeAction[]
 }
 
+interface ToastState {
+  /** Keys the element, so a second toast restarts the clock instead of inheriting it. */
+  id: number
+  message: string
+  detail?: string
+}
+
 /** requestIdleCallback where available, a frame otherwise (plan §11). */
 function scheduleIdle(task: () => void): void {
   if (typeof window.requestIdleCallback === 'function') {
@@ -56,7 +64,8 @@ function scheduleIdle(task: () => void): void {
 
 function readStoredRatio(): number {
   const stored = Number(window.localStorage.getItem(SPLIT_STORAGE_KEY))
-  return Number.isFinite(stored) && stored > 0.1 && stored < 0.9 ? stored : DEFAULT_RATIO
+  // A ratio saved under an older, looser limit is pulled inside the current one.
+  return Number.isFinite(stored) && stored > 0 && stored < 1 ? clampRatio(stored) : DEFAULT_RATIO
 }
 
 function countWords(source: string): number {
@@ -82,6 +91,7 @@ export function App(): React.JSX.Element {
    */
   const [paletteQuery, setPaletteQuery] = useState('')
   const [notice, setNotice] = useState<NoticeState | null>(null)
+  const [toast, setToast] = useState<ToastState | null>(null)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [compareSource, setCompareSource] = useState<CompareSource | null>(null)
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null)
@@ -91,7 +101,6 @@ export function App(): React.JSX.Element {
   /** True while a file drag hovers the window — draws the shell's inset outline. */
   const [dragging, setDragging] = useState(false)
 
-  const panesRef = useRef<HTMLDivElement | null>(null)
   const previewScrollRef = useRef<HTMLDivElement | null>(null)
   const previewScrollMemo = useRef(0)
   /**
@@ -225,15 +234,18 @@ export function App(): React.JSX.Element {
       const last = payloads[payloads.length - 1]
       if (last) activate(last.meta.id, seed ?? last.content)
 
+      // Opening something clears a stale notice. A sniffed encoding is worth
+      // mentioning but asks nothing of the user, so it passes as a toast rather
+      // than a notice that has to be dismissed; the status bar still shows it.
+      setNotice(null)
       const guessed = payloads.find((payload) => payload.encodingGuessed)
-      setNotice(
-        guessed
-          ? {
-              message: `Opened ${guessed.meta.name} as ${guessed.meta.encoding.toUpperCase()}.`,
-              detail: 'The encoding was detected, not declared by the file.'
-            }
-          : null
-      )
+      if (guessed) {
+        setToast((current) => ({
+          id: (current?.id ?? 0) + 1,
+          message: `Opened ${guessed.meta.name} as ${guessed.meta.encoding.toUpperCase()}.`,
+          detail: 'The encoding was detected, not declared by the file.'
+        }))
+      }
     },
     [activate, editor]
   )
@@ -1074,7 +1086,7 @@ export function App(): React.JSX.Element {
           openAccelerator={focusAccelerator('file.open')}
         />
       ) : (
-      <div className="panes" ref={panesRef}>
+      <div className="panes">
         <EditorPane
           attach={editor.attach}
           maximized={paneFocus === 'editor'}
@@ -1087,7 +1099,6 @@ export function App(): React.JSX.Element {
 
         {split ? (
           <Divider
-            containerRef={panesRef}
             minWidth={280}
             onRatioChange={setRatio}
             onReset={() => setRatio(DEFAULT_RATIO)}
@@ -1118,6 +1129,15 @@ export function App(): React.JSX.Element {
         ) : null}
       </div>
       )}
+
+      {toast ? (
+        <Toast
+          key={toast.id}
+          message={toast.message}
+          detail={toast.detail}
+          onDone={() => setToast(null)}
+        />
+      ) : null}
 
       <StatusBar
         cursor={cursor}
