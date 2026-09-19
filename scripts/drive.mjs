@@ -178,7 +178,13 @@ try {
   const mainWindowId = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].id)
 
   // Boot lands on the home screen, not on an untitled buffer.
-  const homeBooted = await until(() => !!document.querySelector('.home'), '.home', 20_000)
+  // The recent block renders nothing until file:recent answers, so the home is
+  // only settled once it shows either the list or the empty line.
+  const homeBooted = await until(
+    () => !!document.querySelector('.home .home__recentEmpty, .home .home__recentList'),
+    '.home recent block',
+    20_000
+  )
   check('app launches to the home screen', homeBooted)
 
   // ── Shell ────────────────────────────────────────────────────────────────

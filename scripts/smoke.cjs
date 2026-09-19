@@ -181,10 +181,16 @@ async function main() {
   // Boot lands on the home screen now, and the probe measures the editor. Wait
   // for the home to mount, then take its sample link — the one road here that
   // reaches a document without a native dialog this harness cannot drive.
+  //
+  // "Mounted" means the recent block has settled too, not just the sample link.
+  // The link is there on the first commit; the recent block renders nothing until
+  // the file:recent round trip answers, so waiting on the link alone measures
+  // that gap on a slow runner and reports the empty-history line as missing.
   for (let attempt = 0; attempt < 50; attempt++) {
     await new Promise((resolve) => setTimeout(resolve, 100))
     const home = await win.webContents.executeJavaScript(
-      '!!document.querySelector(".home__sample")'
+      '!!document.querySelector(".home__sample") && ' +
+        '!!document.querySelector(".home__recentEmpty, .home__recentList")'
     )
     if (home) break
     if (attempt === 49) throw new Error('home screen never mounted')
