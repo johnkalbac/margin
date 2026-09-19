@@ -1,7 +1,8 @@
 /**
  * Generates the application icons — `npm run icons`.
  *
- * The outputs (build/icon.icns, build/icon.ico, build/icon.png) are committed;
+ * The outputs (build/icon.icns, build/icon.ico, build/icon.png, and the
+ * Microsoft Store tiles in build/appx/) are committed;
  * this script only has to run when the artwork changes. It is deliberately not
  * part of `npm run build`: it launches a second Electron process to rasterize,
  * which is a lot of seconds to pay on every build for a file that never moves.
@@ -75,30 +76,37 @@ function mono(stroke) {
  * 185.4 corner radius on a 1024 canvas, which is what makes it sit the same size
  * as every other icon in the Dock — and 'square' for Windows, which draws its
  * own container and expects full bleed.
+ *
+ * `height` defaults to `size`; only the Store's wide tile passes one. Everything
+ * that scales — the ladder rung, the edge, the mark — is judged on the SHORT
+ * side, so a 310x150 tile carries the same mark a 150 square does, centred.
  */
-function svg(size, shape) {
-  const inset = shape === 'squircle' ? (size * 100) / 1024 : 0
-  const body = size - inset * 2
-  const radius = shape === 'squircle' ? (body * 185.4) / 824 : 0
+function svg(size, shape, height = size) {
+  const width = size
+  const short = Math.min(width, height)
+  const inset = shape === 'squircle' ? (short * 100) / 1024 : 0
+  const bodyW = width - inset * 2
+  const bodyH = height - inset * 2
+  const radius = shape === 'squircle' ? (Math.min(bodyW, bodyH) * 185.4) / 824 : 0
 
   // The edge keeps a paper-white tile from dissolving into a light dock or
   // taskbar. It is a hairline, so it stays 1px until the tile is big enough for
   // a scaled rule to still read as one.
-  const edge = Math.max(1, size * 0.008)
+  const edge = Math.max(1, short * 0.008)
   const half = edge / 2
 
-  const { strokes, fill } = art(size)
-  const markW = body * fill
+  const { strokes, fill } = art(short)
+  const markW = Math.min(bodyW, bodyH) * fill
   const markH = (markW * MARK_BOX.h) / MARK_BOX.w
-  const markX = inset + (body - markW) / 2
-  const markY = inset + (body - markH) / 2
+  const markX = inset + (bodyW - markW) / 2
+  const markY = inset + (bodyH - markH) / 2
 
   const paths = strokes
     .map((s) => `<path d="${s.d}" stroke="${s.stroke}" stroke-width="${s.width}"/>`)
     .join('')
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-  <rect x="${inset + half}" y="${inset + half}" width="${body - edge}" height="${body - edge}"
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+  <rect x="${inset + half}" y="${inset + half}" width="${bodyW - edge}" height="${bodyH - edge}"
         rx="${Math.max(0, radius - half)}" fill="${GROUND}" stroke="${EDGE}" stroke-width="${edge}"/>
   <svg x="${markX}" y="${markY}" width="${markW}" height="${markH}"
        viewBox="${MARK_BOX.x} ${MARK_BOX.y} ${MARK_BOX.w} ${MARK_BOX.h}"
@@ -106,16 +114,16 @@ function svg(size, shape) {
 </svg>`
 }
 
-/** Rasterizes one icon to a NativeImage of exactly size x size. */
-async function render(win, size, shape) {
+/** Rasterizes one icon to a NativeImage of exactly size x height. */
+async function render(win, size, shape, height = size) {
   const html = `<!doctype html><meta charset="utf-8">
 <style>html,body{margin:0;padding:0;background:transparent}</style>
-${svg(size, shape)}`
+${svg(size, shape, height)}`
   await win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html))
-  const image = await win.webContents.capturePage({ x: 0, y: 0, width: size, height: size })
+  const image = await win.webContents.capturePage({ x: 0, y: 0, width: size, height })
   const actual = image.getSize()
-  if (actual.width !== size || actual.height !== size) {
-    throw new Error(`capture was ${actual.width}x${actual.height}, expected ${size}`)
+  if (actual.width !== size || actual.height !== height) {
+    throw new Error(`capture was ${actual.width}x${actual.height}, expected ${size}x${height}`)
   }
   return image
 }
@@ -212,12 +220,39 @@ const MAC_CHUNKS = [
   ['ic10', 1024] // 512@2x
 ]
 
+/**
+ * The Microsoft Store package's images (electron-builder's `appx` target reads
+ * build/appx/). Without them it packs Electron's sample art — silently, the
+ * same failure as a missing icon — and Start, the taskbar and the Store listing
+ * all show it.
+ *
+ * The file names are the manifest's asset names plus MRT qualifiers; any
+ * qualified name makes electron-builder run makepri, which is what lets Windows
+ * pick a size instead of scaling one. Two families:
+ *
+ *   - `scale-N`: the same logical tile at N% display scaling.
+ *   - `targetsize-N`: Square44x44Logo at an exact pixel size, for the taskbar,
+ *     Start's app list and Explorer. These are where the small-size rules in
+ *     `art()` matter, exactly as in icon.ico. The `_altform-unplated` copies are
+ *     what Windows 10/11 actually draws on the taskbar; the art is the same full-
+ *     bleed paper tile the NSIS build's .ico shows, so both installs look alike.
+ */
+const APPX_SCALES = [100, 200, 400]
+const APPX_TILES = [
+  ['StoreLogo', 50, 50],
+  ['Square44x44Logo', 44, 44],
+  ['Square150x150Logo', 150, 150],
+  ['Wide310x150Logo', 310, 150]
+]
+const APPX_TARGET_SIZES = [16, 24, 32, 48, 256]
+
 async function main() {
   await app.whenReady()
   if (!existsSync(OUT)) mkdirSync(OUT, { recursive: true })
 
+  // Wider than tall: the largest capture is the 400% wide tile, 1240x600.
   const win = new BrowserWindow({
-    width: 1200,
+    width: 1280,
     height: 1200,
     show: false,
     frame: false,
@@ -245,6 +280,22 @@ async function main() {
     macChunks.push({ type, data: (await at(size, 'squircle')).toPNG() })
   }
   writeFileSync(join(OUT, 'icon.icns'), icns(macChunks))
+
+  const appxDir = join(OUT, 'appx')
+  if (!existsSync(appxDir)) mkdirSync(appxDir, { recursive: true })
+  for (const [name, width, height] of APPX_TILES) {
+    for (const scale of APPX_SCALES) {
+      const w = (width * scale) / 100
+      const h = (height * scale) / 100
+      const image = await render(win, w, 'square', h)
+      writeFileSync(join(appxDir, `${name}.scale-${scale}.png`), image.toPNG())
+    }
+  }
+  for (const size of APPX_TARGET_SIZES) {
+    const png = (await at(size, 'square')).toPNG()
+    writeFileSync(join(appxDir, `Square44x44Logo.targetsize-${size}.png`), png)
+    writeFileSync(join(appxDir, `Square44x44Logo.targetsize-${size}_altform-unplated.png`), png)
+  }
 
   // Linux, and the dev-mode window/taskbar icon on Windows — see createWindow.
   writeFileSync(join(OUT, 'icon.png'), (await at(512, 'square')).toPNG())

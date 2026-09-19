@@ -75,6 +75,177 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  # ── Mac App Store ──────────────────────────────────────────────────────────
+  #
+  # Builds the sandboxed .pkg and uploads it to App Store Connect, where it
+  # lands in TestFlight. An upload never submits for review — that stays a
+  # click in App Store Connect — so it runs on manual dispatches too, which is
+  # how a sandbox build gets tested before a release is tagged.
+  #
+  # Off until the repository variable MAS_UPLOAD is 'true' (Settings > Secrets
+  # and variables > Actions > Variables). A repository variable, not one on the
+  # environment: a job-level `if` is evaluated before the environment is entered.
+  # The secrets live on the `mac-app-store` environment, whose required reviewer
+  # is what stops anything leaving CI unapproved.
+  mas:
+    name: Mac App Store (upload to App Store Connect)
+    needs: build
+    if: >-
+      vars.MAS_UPLOAD == 'true' &&
+      (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch')
+    # Not macos-latest: altool's App Store Connect API-key login has been
+    # reported failing on the Xcode 26 image ("Failed to generate JWT token"),
+    # and nothing here needs a newer SDK. Move forward once that is confirmed fixed.
+    runs-on: macos-15
+    environment: mac-app-store
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Cache the Electron download
+        uses: actions/cache@v6
+        with:
+          path: ~/Library/Caches/electron
+          key: electron-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: electron-${{ runner.os }}-
+
+      - run: npm ci
+
+      - name: Install the provisioning profile
+        env:
+          PROFILE: ${{ secrets.MAS_PROVISIONING_PROFILE }}
+        run: printf '%s' "$PROFILE" | base64 --decode > build/embedded.provisionprofile
+
+      # Placeholders, a Team ID the entitlements disagree with, a missing
+      # profile: each would otherwise surface minutes later as a rejected upload.
+      - run: npm run check:store -- mas
+
+      - name: Build the Mac App Store package
+        run: npm run dist:mas -- --publish never
+        env:
+          # base64 .p12 content; electron-builder imports both into a temporary
+          # keychain. Scoped to this step — the dmg build must never see them.
+          CSC_LINK: ${{ secrets.MAS_APP_CERT_P12 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAS_APP_CERT_PASSWORD }}
+          CSC_INSTALLER_LINK: ${{ secrets.MAS_INSTALLER_CERT_P12 }}
+          CSC_INSTALLER_KEY_PASSWORD: ${{ secrets.MAS_INSTALLER_CERT_PASSWORD }}
+          # CFBundleVersion: monotonic per workflow. A re-run keeps its number, so
+          # re-running a job that already uploaded fails as a duplicate — correct.
+          MAS_BUILD_NUMBER: ${{ github.run_number }}
+
+      # The mas config's two silent failure modes, asserted rather than trusted:
+      # an unsandboxed bundle, and an identity that fell back to ad-hoc.
+      - name: Check the signature and the sandbox
+        run: |
+          app=$(find release -maxdepth 2 -name Margin.app -path '*mas*' | head -1)
+          test -n "$app" || { echo "::error::no MAS Margin.app under release/"; exit 1; }
+          codesign -d --entitlements - "$app" 2>&1 | grep -q com.apple.security.app-sandbox \
+            || { echo "::error::$app is not sandboxed"; exit 1; }
+          codesign -dvv "$app" 2>&1 | grep -q 'Authority=Apple Distribution' \
+            || { echo "::error::$app is not signed with Apple Distribution"; exit 1; }
+          pkgutil --check-signature release/*-mas.pkg
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: mac-app-store
+          path: release/*-mas.pkg
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Validate and upload to App Store Connect
+        env:
+          KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ISSUER: ${{ secrets.ASC_API_ISSUER_ID }}
+          KEY_P8: ${{ secrets.ASC_API_KEY_P8 }}
+        run: |
+          mkdir -p ~/.appstoreconnect/private_keys
+          printf '%s' "$KEY_P8" > ~/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8
+          pkg=$(ls release/*-mas.pkg)
+          xcrun altool --validate-app -f "$pkg" -t macos --apiKey "$KEY_ID" --apiIssuer "$ISSUER"
+          xcrun altool --upload-app   -f "$pkg" -t macos --apiKey "$KEY_ID" --apiIssuer "$ISSUER"
+
+  # ── Microsoft Store ────────────────────────────────────────────────────────
+  #
+  # Builds the unsigned .appx (the Store re-signs what it ingests) and, on a
+  # tag, uploads it into a DRAFT submission for review in Partner Center.
+  #
+  # Off until the repository variable MSSTORE_PACKAGE is 'true'. With it on and
+  # MSSTORE_PRODUCT_ID not yet set, the job only builds: the artifact is the
+  # package for the first submission, which Partner Center requires be made by
+  # hand before its API will accept one.
+  msstore:
+    name: Microsoft Store (package, draft submission)
+    needs: build
+    if: >-
+      vars.MSSTORE_PACKAGE == 'true' &&
+      (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch')
+    runs-on: windows-latest
+    environment: microsoft-store
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Cache the Electron download
+        uses: actions/cache@v6
+        with:
+          path: ~/AppData/Local/electron/Cache
+          key: electron-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: electron-${{ runner.os }}-
+
+      - run: npm ci
+
+      - run: npm run check:store -- appx
+
+      # No CSC_LINK anywhere in this job: a package signed with any certificate
+      # but the Store's own is refused.
+      - name: Build the Store package
+        run: npm run dist:store -- --publish never
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: microsoft-store
+          path: release/*.appx
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Set up the Store CLI
+        if: startsWith(github.ref, 'refs/tags/v') && vars.MSSTORE_PRODUCT_ID != ''
+        uses: microsoft/microsoft-store-apppublisher@v1.1
+
+      - name: Configure the Store CLI
+        if: startsWith(github.ref, 'refs/tags/v') && vars.MSSTORE_PRODUCT_ID != ''
+        run: >
+          msstore reconfigure
+          --tenantId ${{ secrets.PARTNER_CENTER_TENANT_ID }}
+          --sellerId ${{ secrets.PARTNER_CENTER_SELLER_ID }}
+          --clientId ${{ secrets.PARTNER_CENTER_CLIENT_ID }}
+          --clientSecret ${{ secrets.PARTNER_CENTER_CLIENT_SECRET }}
+
+      # --noCommit leaves a draft to review and submit in Partner Center; drop it
+      # to send submissions straight to certification. `publish` REPLACES any
+      # pending draft, so edit listing text after this runs, not before.
+      #
+      # The CLI documents .msix/.msixupload inputs. AppX and MSIX are one
+      # container format, so the package is handed over under an .msix name.
+      - name: Upload to a draft submission
+        if: startsWith(github.ref, 'refs/tags/v') && vars.MSSTORE_PRODUCT_ID != ''
+        shell: pwsh
+        run: |
+          $appx = Get-ChildItem release\*.appx | Select-Object -First 1
+          $msix = Join-Path $env:RUNNER_TEMP ($appx.BaseName + '.msix')
+          Copy-Item $appx.FullName $msix
+          msstore publish . --inputFile $msix --appId ${{ vars.MSSTORE_PRODUCT_ID }} --noCommit
+
   publish:
     name: Release
     needs: build

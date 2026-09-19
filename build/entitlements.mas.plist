@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Mac App Store build, main app bundle. Named explicitly in electron-builder.cjs:
+  without it electron-builder signs with its non-sandboxed template.
+
+  No network entitlement: Margin makes no requests (the CSP admits no remote
+  origin), and shell.openExternal hands URLs to the browser without one.
+
+  The application group's prefix is the Team ID in electron-builder.cjs
+  (STORE.appleTeamId). `npm run check:store` asserts the two agree.
+-->
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.app-sandbox</key>
+  <true/>
+  <!-- Electron's MAS build keeps its own IPC in the group container. -->
+  <key>com.apple.security.application-groups</key>
+  <array>
+    <string>REPLACE_TEAM_ID.com.johnkalbac.margin</string>
+  </array>
+  <!-- Open, Save As, Compare With: files the user picks in a dialog. -->
+  <key>com.apple.security.files.user-selected.read-write</key>
+  <true/>
+  <!-- Open Recent across relaunches: src/main/securityScopes.ts. -->
+  <key>com.apple.security.files.bookmarks.app-scope</key>
+  <true/>
+</dict>
+</plist>

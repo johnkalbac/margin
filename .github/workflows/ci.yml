@@ -52,6 +52,22 @@ jobs:
       - run: npm run build
       - run: npm run smoke
 
+      # The Store package needs no secrets (it ships unsigned), so it is built on
+      # every PR: a manifest error, or tiles that fell back to Electron's sample
+      # art, fails here instead of on a release tag. The Mac App Store build
+      # needs certificates, which PRs from forks never get, so it has no leg here.
+      - name: Package for the Microsoft Store
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          npx electron-builder --win appx --publish never
+          appx=$(ls release/*.appx)
+          unzip -l "$appx" | grep -q 'assets/Square44x44Logo.targetsize-16.png' \
+            || { echo "::error::$appx is missing Margin's tile art"; exit 1; }
+          if unzip -l "$appx" | grep -q SampleAppx; then
+            echo "::error::$appx carries Electron's sample tile art"; exit 1
+          fi
+
       # e2e launches the real app, so it needs a desktop session. The macOS and
       # Windows runners have one; a Linux leg would need xvfb, which is why
       # there isn't one.

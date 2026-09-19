@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 
+import { COPYRIGHT, LICENSE, LICENSE_URL, SOURCE_URL, VERSION } from '@shared/branding'
 import type { RecentFile } from '@shared/ipc'
 import { LogoMark } from './Logo'
 
@@ -151,6 +152,61 @@ export function HomeScreen({
           Open the sample document
         </button>
       </div>
+
+      <HomeFooter />
     </div>
+  )
+}
+
+/**
+ * Version, source, copyright and license — the colophon, pinned to the foot of
+ * the panel.
+ *
+ * Read in passing, so it sits a size below everything above it. Each link is an
+ * anchor because it goes somewhere, but the click is handed to main rather than
+ * followed: the window would refuse the navigation anyway (security.ts), and
+ * going through `shell.openExternal` directly is the same route preview links
+ * take, with main re-checking the protocol.
+ */
+function HomeFooter(): React.JSX.Element {
+  return (
+    <footer className="home__footer">
+      <span>Version {VERSION}</span>
+      <FooterSep />
+      <ExternalLink href={SOURCE_URL}>Source code</ExternalLink>
+      <FooterSep />
+      <span>{COPYRIGHT}</span>
+      <FooterSep />
+      <ExternalLink href={LICENSE_URL}>{LICENSE} License</ExternalLink>
+    </footer>
+  )
+}
+
+function FooterSep(): React.JSX.Element {
+  return (
+    <span className="home__footerSep" aria-hidden="true">
+      ·
+    </span>
+  )
+}
+
+function ExternalLink({
+  href,
+  children
+}: {
+  href: string
+  children: React.ReactNode
+}): React.JSX.Element {
+  return (
+    <a
+      className="home__footerLink"
+      href={href}
+      onClick={(event) => {
+        event.preventDefault()
+        void window.margin.shell.openExternal(href)
+      }}
+    >
+      {children}
+    </a>
   )
 }

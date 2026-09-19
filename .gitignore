@@ -55,6 +55,7 @@ $RECYCLE.BIN/
 *.p12
 *.pfx
 *.mobileprovision
+*.provisionprofile
 build/entitlements.local.*
 
 # Claude Code

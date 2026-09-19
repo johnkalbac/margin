@@ -19,6 +19,7 @@ import { OPENABLE_EXTENSIONS } from '@shared/openable'
 import { DocumentRegistry, resolveKey } from './DocumentRegistry'
 import { FileWatcher, readTextFile, writeTextFile } from './FileService'
 import { HistoryService, type HistoryVersion } from './HistoryService'
+import { SecurityScopes } from './securityScopes'
 import { SettingsStore } from './SettingsStore'
 import type { WindowState } from './windowState'
 import { WindowManager } from './WindowManager'
@@ -52,6 +53,7 @@ let watcher: FileWatcher
 let settings: SettingsStore
 let windows: WindowManager
 let history: HistoryService
+let scopes: SecurityScopes
 
 let changesSeen = 0
 
@@ -127,6 +129,21 @@ function payloadFor(meta: DocMeta, content: string, encodingGuessed: boolean): D
 }
 
 /**
+ * Add a path to the recent list, with the grant that lets it be reopened.
+ *
+ * In the Mac App Store sandbox a path without a bookmark cannot be read after
+ * a relaunch, so listing it would offer an entry that fails with EPERM every
+ * time. Files that arrive by drag-drop or from Finder have none — Electron can
+ * only mint a bookmark from a dialog — so on that build they stay out of the
+ * list until they are opened through one. Everywhere else, every open counts.
+ */
+function noteRecent(path: string, bookmark: string | undefined): void {
+  if (process.mas && !bookmark && !settings.bookmarkFor(path)) return
+  settings.noteOpened(path, basename(path), bookmark)
+  refreshMenu()
+}
+
+/**
  * Open one path: reuse the document already at that canonical key, or read it.
  *
  * The reuse branch is §2's "a document is open in exactly one tab,
@@ -134,7 +151,27 @@ function payloadFor(meta: DocMeta, content: string, encodingGuessed: boolean): D
  * file focuses its existing tab rather than duplicating it. `alreadyOpen` tells
  * the renderer which of the two happened so it can focus instead of adding.
  */
-async function openPath(path: string): Promise<DocumentPayload & { alreadyOpen: boolean }> {
+async function openPath(
+  path: string,
+  bookmark?: string
+): Promise<DocumentPayload & { alreadyOpen: boolean }> {
+  // First, before resolveKey: realpath needs the sandbox grant as much as the
+  // read does. A no-op outside a Mac App Store build (securityScopes.ts).
+  const heldBefore = scopes.holds(path)
+  scopes.acquire(path, bookmark ?? settings.bookmarkFor(path))
+  try {
+    return await readIntoRegistry(path, bookmark)
+  } catch (error) {
+    // Nothing was opened, so nothing holds the grant this call took.
+    if (!heldBefore) scopes.release(path)
+    throw error
+  }
+}
+
+async function readIntoRegistry(
+  path: string,
+  bookmark: string | undefined
+): Promise<DocumentPayload & { alreadyOpen: boolean }> {
   const key = await resolveKey(path)
 
   const existing = registry.findByKey(key)
@@ -160,8 +197,7 @@ async function openPath(path: string): Promise<DocumentPayload & { alreadyOpen: 
   })
 
   watcher.watchFile(path, snapshot.hash)
-  settings.noteOpened(path, basename(path))
-  refreshMenu()
+  noteRecent(path, bookmark)
   await history.open(meta.id, key, snapshot.text)
 
   return {
@@ -198,7 +234,9 @@ async function saveAsHandler(docId: DocId, content: string): Promise<FileResult<
     const options = {
       title: 'Save As',
       defaultPath: record.meta.path ?? `${record.meta.name}.md`,
-      filters: MARKDOWN_FILTERS
+      filters: MARKDOWN_FILTERS,
+      // Mac App Store only (ignored elsewhere): a grant to reopen it next launch.
+      securityScopedBookmarks: process.mas
     }
     const result = await (window
       ? dialog.showSaveDialog(window, options)
@@ -216,7 +254,11 @@ async function saveAsHandler(docId: DocId, content: string): Promise<FileResult<
       return { ok: false, error: `${basename(path)} is already open in another tab` }
     }
 
-    if (record.meta.path && record.meta.path !== path) watcher.unwatch(record.meta.path)
+    if (record.meta.path && record.meta.path !== path) {
+      watcher.unwatch(record.meta.path)
+      // The document has moved; the old file's grant has nothing left to serve.
+      scopes.release(record.meta.path)
+    }
 
     registry.bindPath(docId, path, key)
     // An untitled document had nowhere to journal; it gets one now, opening
@@ -225,8 +267,7 @@ async function saveAsHandler(docId: DocId, content: string): Promise<FileResult<
     const meta = await saveTo(docId, path, content)
 
     watcher.watchFile(path, registry.get(docId)?.hash ?? '')
-    settings.noteOpened(path, basename(path))
-    refreshMenu()
+    noteRecent(path, result.bookmark)
 
     return { ok: true, value: meta }
   } catch (error) {
@@ -240,6 +281,8 @@ async function chooseAndOpen(
 ): Promise<FileResult<Array<DocumentPayload & { alreadyOpen: boolean }>>> {
   try {
     let paths: string[]
+    // Index-for-index with `paths`; only a Mac App Store dialog fills it.
+    let bookmarks: string[] = []
 
     if (typeof path === 'string' && path.length > 0) {
       paths = [path]
@@ -247,7 +290,8 @@ async function chooseAndOpen(
       const options = {
         title: 'Open',
         properties: ['openFile', 'multiSelections'] as Array<'openFile' | 'multiSelections'>,
-        filters: MARKDOWN_FILTERS
+        filters: MARKDOWN_FILTERS,
+        securityScopedBookmarks: process.mas
       }
       const result = await (window
         ? dialog.showOpenDialog(window, options)
@@ -255,10 +299,11 @@ async function chooseAndOpen(
 
       if (result.canceled) return { ok: true, value: [] }
       paths = result.filePaths
+      bookmarks = result.bookmarks ?? []
     }
 
     const opened = []
-    for (const each of paths) opened.push(await openPath(each))
+    for (const [i, each] of paths.entries()) opened.push(await openPath(each, bookmarks[i]))
     return { ok: true, value: opened }
   } catch (error) {
     return failed(error)
@@ -321,6 +366,11 @@ export function registerIpcHandlers(next: IpcDeps): void {
   settings = new SettingsStore()
   windows = new WindowManager()
   history = new HistoryService(join(app.getPath('userData'), 'history'))
+  scopes = new SecurityScopes(
+    process.mas
+      ? (bookmark) => app.startAccessingSecurityScopedResource(bookmark) as () => void
+      : null
+  )
 
   watcher = new FileWatcher((path) => {
     const record = registry.findByPath(path)
@@ -466,7 +516,10 @@ export function registerIpcHandlers(next: IpcDeps): void {
 
     history.close(docId)
     const record = registry.remove(docId)
-    if (record?.meta.path) watcher.unwatch(record.meta.path)
+    if (record?.meta.path) {
+      watcher.unwatch(record.meta.path)
+      scopes.release(record.meta.path)
+    }
   })
 
   ipcMain.handle(
@@ -726,4 +779,5 @@ export function disposeFileLayer(): void {
   // makes every entry after a gap unreplayable.
   history?.closeAll()
   watcher?.dispose()
+  scopes?.releaseAll()
 }

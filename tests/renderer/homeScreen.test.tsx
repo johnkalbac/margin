@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { HomeScreen } from '@renderer/components/HomeScreen'
+import { COPYRIGHT, LICENSE, LICENSE_URL, SOURCE_URL, VERSION } from '@shared/branding'
 import type { RecentFile } from '@shared/ipc'
 
 /**
@@ -169,5 +170,41 @@ describe('HomeScreen', () => {
     // New Document stays out: the tab strip's + and Cmd+N already carry it.
     expect(screen.queryByText('New Document')).toBeNull()
     expect(container.querySelector('.home__line')).toBeNull()
+  })
+
+  it('shows the version, source, copyright and license at its foot', () => {
+    const openExternal = vi.fn(async () => true)
+    ;(window as unknown as { margin: { shell: unknown } }).margin.shell = { openExternal }
+
+    const { container } = render(
+      <HomeScreen
+        onOpen={vi.fn()}
+        onOpenPath={vi.fn()}
+        onOpenSample={vi.fn()}
+        openAccelerator={null}
+      />
+    )
+
+    const footer = container.querySelector('.home__footer')
+    // Read from package.json and branding.json, never retyped here.
+    expect(footer?.textContent).toBe(
+      `Version ${VERSION}·Source code·${COPYRIGHT}·${LICENSE} License`
+    )
+    expect(LICENSE).toBe('MIT')
+
+    const links: Array<[string, string]> = [
+      ['Source code', SOURCE_URL],
+      ['MIT License', LICENSE_URL]
+    ]
+    for (const [name, url] of links) {
+      const link = screen.getByRole('link', { name })
+      expect(link.getAttribute('href')).toBe(url)
+
+      // Handed to main, not followed: the window must never navigate away.
+      const click = new MouseEvent('click', { bubbles: true, cancelable: true })
+      link.dispatchEvent(click)
+      expect(click.defaultPrevented).toBe(true)
+      expect(openExternal).toHaveBeenLastCalledWith(url)
+    }
   })
 })

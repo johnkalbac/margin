@@ -87,6 +87,68 @@ describe('recent files', () => {
   })
 })
 
+/**
+ * Security-scoped bookmarks — the grant a Mac App Store build needs to reopen a
+ * recent file after a relaunch. What matters: they survive the relaunch, a
+ * reopen without a fresh one keeps the old, they never outlive their entry,
+ * and they never reach the renderer.
+ */
+describe('bookmarks', () => {
+  it('survive a relaunch', () => {
+    const file = join(dir, `settings-${counter++}.json`)
+    new SettingsStore(file).noteOpened('/a/one.md', 'one.md', 'bm-one')
+    expect(new SettingsStore(file).bookmarkFor('/a/one.md')).toBe('bm-one')
+  })
+
+  it('are kept when an entry is reopened without a fresh one', () => {
+    const settings = store()
+    settings.noteOpened('/a/one.md', 'one.md', 'bm-one')
+    // Open Recent mints nothing; the grant it was opened with must stay.
+    settings.noteOpened('/a/one.md', 'one.md')
+    expect(settings.bookmarkFor('/a/one.md')).toBe('bm-one')
+  })
+
+  it('go when their entry goes — forgotten, cleared, or pushed off the end', () => {
+    const settings = store()
+    settings.noteOpened('/a/one.md', 'one.md', 'bm-one')
+    settings.noteOpened('/b/two.md', 'two.md', 'bm-two')
+
+    settings.forget('/a/one.md')
+    expect(settings.bookmarkFor('/a/one.md')).toBeUndefined()
+
+    settings.clearRecent()
+    expect(settings.bookmarkFor('/b/two.md')).toBeUndefined()
+
+    settings.noteOpened('/c/old.md', 'old.md', 'bm-old')
+    for (let i = 0; i < 20; i++) settings.noteOpened(`/n/${i}.md`, `${i}.md`)
+    expect(settings.recent().some((entry) => entry.path === '/c/old.md')).toBe(false)
+    expect(settings.bookmarkFor('/c/old.md')).toBeUndefined()
+  })
+
+  it('stay out of the settings the renderer receives', () => {
+    const settings = store()
+    settings.noteOpened('/a/one.md', 'one.md', 'bm-one')
+    const sent = JSON.stringify(settings.all())
+    expect(sent).not.toContain('bm-one')
+    expect(sent).not.toContain('bookmarks')
+  })
+
+  it('ignore a corrupt record', () => {
+    const file = join(dir, `settings-${counter++}.json`)
+    writeFileSync(
+      file,
+      JSON.stringify({
+        recent: [{ path: '/a/one.md', name: 'one.md', openedAt: 1 }],
+        bookmarks: { '/a/one.md': 42, '/gone.md': 'bm-gone' }
+      })
+    )
+    const settings = new SettingsStore(file)
+    expect(settings.bookmarkFor('/a/one.md')).toBeUndefined()
+    // No entry for it any more, so it is pruned on load.
+    expect(settings.bookmarkFor('/gone.md')).toBeUndefined()
+  })
+})
+
 describe('window geometry', () => {
   const bounds = { x: 120, y: 60, width: 1440, height: 900, maximized: false }
 

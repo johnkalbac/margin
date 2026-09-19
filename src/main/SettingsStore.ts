@@ -65,9 +65,25 @@ const MAX_RECENT = 12
  */
 const WINDOW_KEY = 'window'
 
+/**
+ * Security-scoped bookmarks, by path — Mac App Store builds only.
+ *
+ * The sandbox grants access to a file the user picked for the life of the
+ * process. A bookmark, minted by the Open or Save dialog at that moment, is
+ * what lets a later launch ask for the same access back (securityScopes.ts);
+ * without one, every Open Recent entry fails with EPERM after a relaunch.
+ *
+ * Beside the settings rather than inside `RecentFile`, for the window key's
+ * reason: `recent` is sent to the renderer, and an opaque ~1KB grant token is
+ * main's business only. Pruned whenever its path leaves the recent list, so the
+ * map can never outgrow it.
+ */
+const BOOKMARKS_KEY = 'bookmarks'
+
 export class SettingsStore {
   private data: Settings = { ...DEFAULTS }
   private window: WindowState | null = null
+  private bookmarks: Record<string, string> = {}
   private readonly file: string
 
   constructor(file?: string) {
@@ -77,12 +93,17 @@ export class SettingsStore {
 
   private load(): void {
     try {
-      const { [WINDOW_KEY]: savedWindow, ...parsed } = JSON.parse(
+      const {
+        [WINDOW_KEY]: savedWindow,
+        [BOOKMARKS_KEY]: savedBookmarks,
+        ...parsed
+      } = JSON.parse(
         readFileSync(this.file, 'utf8')
         // Split off before the spread below: `all()` is sent to the renderer, so
         // an unknown key from the file must not ride along into it.
-      ) as Partial<Settings> & { [WINDOW_KEY]?: unknown }
+      ) as Partial<Settings> & { [WINDOW_KEY]?: unknown; [BOOKMARKS_KEY]?: unknown }
       this.window = isWindowState(savedWindow) ? savedWindow : null
+      this.bookmarks = validBookmarks(savedBookmarks)
       this.data = {
         ...DEFAULTS,
         ...parsed,
@@ -97,17 +118,20 @@ export class SettingsStore {
         autoSaveDelayMs: clampDelay(parsed.autoSaveDelayMs),
         saveOnExit: parsed.saveOnExit === true
       }
+      // A hand-edited or older file can hold a bookmark whose entry is gone.
+      this.pruneBookmarks()
     } catch {
       // No file yet, or unreadable. Defaults are correct in both cases.
       this.data = { ...DEFAULTS }
       this.window = null
+      this.bookmarks = {}
     }
   }
 
   private persist(): void {
     try {
       mkdirSync(dirname(this.file), { recursive: true })
-      const contents = { ...this.data, [WINDOW_KEY]: this.window }
+      const contents = { ...this.data, [WINDOW_KEY]: this.window, [BOOKMARKS_KEY]: this.bookmarks }
       writeFileSync(this.file, JSON.stringify(contents, null, 2), 'utf8')
     } catch {
       // Settings are a convenience. Failing to persist them must never fail the
@@ -158,11 +182,32 @@ export class SettingsStore {
     this.persist()
   }
 
-  /** Record an open. Most recent first, de-duplicated by path. */
-  noteOpened(path: string, name: string): void {
+  /**
+   * Record an open. Most recent first, de-duplicated by path.
+   *
+   * `bookmark` is the grant the dialog minted for this open, when there was one.
+   * Absent, the path keeps whatever bookmark it already had — reopening a recent
+   * entry mints nothing, and must not throw away the grant it was opened with.
+   */
+  noteOpened(path: string, name: string, bookmark?: string): void {
     const without = this.data.recent.filter((entry) => entry.path !== path)
     this.data.recent = [{ path, name, openedAt: Date.now() }, ...without].slice(0, MAX_RECENT)
+    if (bookmark) this.bookmarks[path] = bookmark
+    this.pruneBookmarks()
     this.persist()
+  }
+
+  /** The grant a Mac App Store build needs to reopen `path` after a relaunch. */
+  bookmarkFor(path: string): string | undefined {
+    return this.bookmarks[path]
+  }
+
+  /** Drop every bookmark whose path is no longer in the recent list. */
+  private pruneBookmarks(): void {
+    const kept = new Set(this.data.recent.map((entry) => entry.path))
+    for (const path of Object.keys(this.bookmarks)) {
+      if (!kept.has(path)) delete this.bookmarks[path]
+    }
   }
 
   /**
@@ -176,6 +221,7 @@ export class SettingsStore {
   clearRecent(): void {
     if (this.data.recent.length === 0) return
     this.data.recent = []
+    this.pruneBookmarks()
     this.persist()
   }
 
@@ -184,6 +230,7 @@ export class SettingsStore {
     const next = this.data.recent.filter((entry) => entry.path !== path)
     if (next.length === this.data.recent.length) return
     this.data.recent = next
+    this.pruneBookmarks()
     this.persist()
   }
 }
@@ -205,6 +252,15 @@ function clampDelay(value: unknown): number {
 
 function isFlavor(value: unknown): value is Flavor {
   return value === 'commonmark' || value === 'gfm' || value === 'gfm-extras'
+}
+
+function validBookmarks(value: unknown): Record<string, string> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return {}
+  const out: Record<string, string> = {}
+  for (const [path, bookmark] of Object.entries(value)) {
+    if (typeof bookmark === 'string' && bookmark.length > 0) out[path] = bookmark
+  }
+  return out
 }
 
 function isRecentFile(value: unknown): value is RecentFile {

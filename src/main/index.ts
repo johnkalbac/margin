@@ -284,7 +284,11 @@ app.setName(PRODUCT_NAME)
 
 // Stable userData path for settings and, from Phase 5, history journals.
 // Changing the appId after journals exist orphans them (plan §15).
-if (process.platform === 'win32') app.setAppUserModelId(APP_ID)
+//
+// Not inside a Microsoft Store package: there Windows assigns the AppUserModelID
+// from the package identity, and overriding it detaches the running app from
+// its own Start entry — taskbar pinning and grouping stop matching.
+if (process.platform === 'win32' && !process.windowsStore) app.setAppUserModelId(APP_ID)
 
 // One instance owns the documents; a second launch focuses the first (plan §2).
 if (!app.requestSingleInstanceLock()) {
@@ -308,6 +312,36 @@ if (!app.requestSingleInstanceLock()) {
     void openFilesInWindow(existing, paths)
   })
 
+  /**
+   * macOS hands documents over through `open-file`, never argv: a double-click
+   * in Finder, Open With > Margin, a file dropped on the Dock icon. It only
+   * fires because electron-builder writes CFBundleDocumentTypes from
+   * `fileAssociations`; App Review opens a document this way.
+   *
+   * The event that LAUNCHES the app arrives before `ready`, so the listener is
+   * registered here, ahead of whenReady, and anything that lands before the
+   * first window exists waits in `pendingOpen`. Paths go through pathsFromArgv
+   * like a Windows launch, so both platforms agree on what is openable.
+   */
+  const pendingOpen: string[] = []
+  let booted = false
+  app.on('open-file', (event, path) => {
+    event.preventDefault()
+    const paths = pathsFromArgv([path])
+    if (paths.length === 0) return
+    if (!booted) {
+      pendingOpen.push(...paths)
+      return
+    }
+    // With every window closed macOS keeps the app running, so a hand-off can
+    // arrive with nowhere to go: it gets a window, as the Dock icon would.
+    const window =
+      BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? createWindow()
+    if (window.isMinimized()) window.restore()
+    window.focus()
+    void openFilesInWindow(window, paths)
+  })
+
   void app.whenReady().then(() => {
     applyContentSecurityPolicy(session.defaultSession, isDev)
     // The file layer needs a way to open a second window (File > New Window,
@@ -316,17 +350,17 @@ if (!app.requestSingleInstanceLock()) {
     const firstWindow = createWindow()
 
     /**
-     * Cold start with files in argv: double-clicked on Windows (the path comes
-     * appended), or `margin README.md` from a shell. macOS passes no argv on
-     * open — its equivalent is the dock `activate` path and the (unimplemented)
-     * open-file event — so this is effectively the Windows and CLI route.
+     * Cold start with files: in argv when double-clicked on Windows (the path
+     * comes appended) or `margin README.md` from a shell, and in `pendingOpen`
+     * when macOS launched the app to open them.
      *
      * Scheduled after `createWindow()` so the window exists to receive them;
      * openFilesInWindow rides `did-finish-load` if the read beats the boot.
      * argv[0] is the exe and, in dev, argv[1] is the app directory — the filter
      * in pathsFromArgv rejects both, since neither is an openable file.
      */
-    const initialFiles = pathsFromArgv(process.argv)
+    booted = true
+    const initialFiles = [...pathsFromArgv(process.argv), ...pendingOpen.splice(0)]
     if (initialFiles.length > 0) void openFilesInWindow(firstWindow, initialFiles)
 
     // macOS: clicking the dock icon with no windows open creates one.

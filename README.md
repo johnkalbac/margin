@@ -1,13 +1,13 @@
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/wordmark-dark.png">
-  <img src="docs/wordmark-light.png" alt="Margin — a simple Markdown editor" width="260">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/png/margin-lockup-dark-bg.png">
+  <img src="docs/assets/png/margin-lockup-dark-bg.png" alt="Margin — a simple Markdown editor" width="260">
 </picture>
 
 A simple cross-platform (macOS + Windows) Markdown editor with a split
 editor/preview, source-mapped scroll sync, tabbed documents, and a command
 palette.
 
-![Margin: typing with live preview, the command palette, dark mode, edit history and inline compare](docs/demo.gif)
+![Margin: typing with live preview, the command palette, dark mode, edit history and inline compare](docs/assets/demo.gif)
 
 Above, in order: live preview as you type, the ⌘K palette switching to dark
 mode, the edit-history sidebar previewing an earlier version, and an inline
@@ -91,6 +91,7 @@ npm run dev
 | `npm run test` | Vitest |
 | `npm run typecheck` | Both TypeScript projects (node and web) |
 | `npm run check:deps` | Asserts exactly one copy of `@codemirror/state` |
+| `npm run notices` | Writes `out/THIRD_PARTY_NOTICES.txt`; runs as the last step of `build` |
 | `npm run smoke` | Loads the built renderer offscreen and asserts against the live DOM |
 | `npm run e2e` | Launches the real app (main process, native menu, file layer) and drives it |
 | `npm run perf` | Measures the preview update budget in Chromium |
@@ -120,4 +121,14 @@ src/
   preload/    the entire contextBridge surface
   renderer/   React UI, CodeMirror host, preview
 ```
+
+
+## License
+
+[MIT](LICENSE) © 2026 John Kalbac.
+
+Margin bundles third-party open-source software under its own licenses.
+`npm run build` collects their notices into `out/THIRD_PARTY_NOTICES.txt`, and
+every packaged build ships it in the app's resources folder, beside `LICENSE.txt`.
+Electron's own `LICENSE.electron.txt` and `LICENSES.chromium.html` ship with it.
 
