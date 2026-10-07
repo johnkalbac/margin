@@ -35,18 +35,24 @@ const OUT = join(ROOT, 'build')
 const GROUND = '#FAFAF9' // --canvas-warm
 const EDGE = '#C4C4C4' // --ash
 const INK = '#0A0A0A' // --ink
+/**
+ * Three 45° strokes sharing one baseline (y 12) and one right edge (x 12): the
+ * top stroke runs the full width, so all three end vertically aligned. Weights
+ * and the 4.5-unit spacing are the original construction's; only the lengths
+ * changed (docs/assets/png/margin-mark-*.png is the reference).
+ */
 const LADDER = [
   { d: 'M1 12 12 1', stroke: '#1F1F1F', width: 1.5 }, // --ink-soft
-  { d: 'M5.5 12 15 2.5', stroke: '#7C8794', width: 1.2 }, // --slate-soft
-  { d: 'M10 12 15 7', stroke: '#C4C4C4', width: 1.0 } // --ash
+  { d: 'M5.5 12 12 5.5', stroke: '#7C8794', width: 1.2 }, // --slate-soft
+  { d: 'M10 12 12 10', stroke: '#C4C4C4', width: 1.0 } // --ash
 ]
 
 /**
- * The mark's tight bounding box in its own 15x13 construction grid, round caps
- * included. The published viewBox is 0 0 15 13, which clips half a cap at each
+ * The mark's tight bounding box in its own 13x13 construction grid, round caps
+ * included. The published viewBox is 0 0 13 13, which clips half a cap at each
  * end — invisible in a 15px wordmark, a chewed corner at 1024.
  */
-const MARK_BOX = { x: 0.25, y: 0.25, w: 15.5, h: 12.5 }
+const MARK_BOX = { x: 0.25, y: 0.25, w: 12.5, h: 12.5 }
 
 /**
  * How the mark is drawn at a given pixel size, per the brand rules:
@@ -57,11 +63,13 @@ const MARK_BOX = { x: 0.25, y: 0.25, w: 15.5, h: 12.5 }
  * So the three-value ladder is used only where all three values are actually
  * resolvable, and the small sizes get the mono variant — two strokes at 16-32,
  * where a third would close up, and three from 48 where it reads.
+ *
+ * `fill` is the mark's share of the tile on both axes, since the mark is square.
  */
 function art(size) {
-  if (size <= 32) return { strokes: LADDER.slice(0, 2).map(mono), fill: 0.7 }
-  if (size < 128) return { strokes: LADDER.map(mono), fill: 0.62 }
-  return { strokes: LADDER, fill: 0.58 }
+  if (size <= 32) return { strokes: LADDER.slice(0, 2).map(mono), fill: 0.64 }
+  if (size < 128) return { strokes: LADDER.map(mono), fill: 0.56 }
+  return { strokes: LADDER, fill: 0.52 }
 }
 
 /** The mono variant: one weight, one value. */
