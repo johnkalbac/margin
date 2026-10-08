@@ -148,12 +148,12 @@ jobs:
             || { echo "::error::$app is not sandboxed"; exit 1; }
           codesign -dvv "$app" 2>&1 | grep -q 'Authority=Apple Distribution' \
             || { echo "::error::$app is not signed with Apple Distribution"; exit 1; }
-          pkgutil --check-signature release/*-mas.pkg
+          pkgutil --check-signature release/mas-universal/*-mas.pkg
 
       - uses: actions/upload-artifact@v7
         with:
           name: mac-app-store
-          path: release/*-mas.pkg
+          path: release/mas-universal/*-mas.pkg
           if-no-files-found: error
           retention-days: 30
 
@@ -165,7 +165,7 @@ jobs:
         run: |
           mkdir -p ~/.appstoreconnect/private_keys
           printf '%s' "$KEY_P8" > ~/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8
-          pkg=$(ls release/*-mas.pkg)
+          pkg=$(ls release/mas-universal/*-mas.pkg)
           xcrun altool --validate-app -f "$pkg" -t macos --apiKey "$KEY_ID" --apiIssuer "$ISSUER"
           xcrun altool --upload-app   -f "$pkg" -t macos --apiKey "$KEY_ID" --apiIssuer "$ISSUER"
 

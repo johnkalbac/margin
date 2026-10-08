@@ -102,7 +102,10 @@ module.exports = {
     category: 'public.app-category.productivity',
     hardenedRuntime: true,
     gatekeeperAssess: false,
-    identity: '-'
+    identity: '-',
+    extendInfo: {
+      ITSAppUsesNonExemptEncryption: false
+    }
   },
 
   win: {
@@ -145,10 +148,13 @@ module.exports = {
      * is used as before.
      */
     bundleVersion: process.env.MAS_BUILD_NUMBER || undefined,
+    /**
+     * Not merged by electron-builder (see mac.extendInfo above). The bundle gets
+     * ElectronTeamID anyway: @electron/osx-sign writes it from the signing
+     * identity. Kept as the value check:store compares the Team ID against.
+     */
     extendInfo: {
-      ElectronTeamID: STORE.appleTeamId,
-      // Export compliance: no non-exempt encryption. Answers the question at upload.
-      ITSAppUsesNonExemptEncryption: false
+      ElectronTeamID: STORE.appleTeamId
     },
     artifactName: binary + '-${version}-mas.${ext}'
   },
