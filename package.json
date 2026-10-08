@@ -27,6 +27,7 @@
     "smoke": "electron scripts/smoke.cjs",
     "e2e": "node scripts/drive.mjs",
     "demo": "node scripts/demo.mjs",
+    "screenshots": "node scripts/store-screenshots.mjs",
     "perf": "node scripts/perf.mjs"
   },
   "dependencies": {
