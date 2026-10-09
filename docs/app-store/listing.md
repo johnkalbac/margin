@@ -103,14 +103,54 @@ scripts/store-frames.cjs` re-frames the last captures without driving the app.
 
 **Sign-in required:** No.
 
-**Notes:**
+**Notes (4000).** Also the reply to the 1.0.1 "Guideline 2.1 – Information Needed"
+request, which asked for exactly these answers in both places. Numbered to match
+Apple's questions.
 
 ```
-Margin is a local Markdown editor. No account or sign-in is needed, and the app makes no network connections.
+1. SCREEN RECORDING
+Attached to this reply: a recording on a Mac running the latest macOS, starting from launching the app and showing the typical flow (open a file, edit with live preview, save, edit history, compare, command palette, dark mode, relaunch and reopen a recent file). Margin has no account registration, login or account deletion, no user-generated content shared with other users, and no paid content or in-app purchases, so none of those flows exist to show.
 
-To try it: File > New, type some Markdown, and the preview updates on the right. File > Open opens any .md or .txt file. View > Toggle History shows the edit history of a saved file, and View > Compare With File shows an inline diff against another file.
+2. PURPOSE AND AUDIENCE
+Margin is a Markdown editor for the Mac. Markdown is a plain-text format used for notes, documentation, README files, blog drafts and technical writing. Margin shows the source on the left and the formatted result on the right, kept in step as you scroll, so writers see what they are producing without switching windows or exporting. It is for writers, students, developers and anyone who keeps notes or documents as plain text files. Beyond editing, it keeps an edit history for each file so earlier versions can be restored, and compares a document against another file or an earlier version inline. Files stay ordinary .md files on the user's Mac, readable by any other app.
 
-The app is sandboxed and only accesses files the user picks in an Open or Save dialog. Security-scoped bookmarks let Open Recent reopen those files after relaunch.
+3. SETUP AND MAIN FEATURES
+No setup, account or credentials are needed. Launch the app and choose New or Open on the home screen.
+- Edit and preview: File > New (Cmd+N), type Markdown on the left; the preview on the right updates as you type.
+- Open and save: File > Open (Cmd+O) opens .md, .markdown and .txt files; File > Save (Cmd+S).
+- Edit history: after saving a few changes, View > Toggle History (Cmd+Shift+H) lists earlier versions; click one to preview it, then Restore this version or Compare with current.
+- Compare: View > Compare With File (Cmd+Shift+C), pick another file; differences are marked inline. View > Exit Compare to return.
+- Command palette: Cmd+K lists every menu command, searchable.
+- Focus: View > Focus Editor / Focus Preview (Cmd+Opt+1 / Cmd+Opt+2) gives one pane the whole window.
+- Dark mode: View > Toggle Dark Mode, or the theme control in the status bar.
+Sample files (a document and an earlier draft of it, for trying Compare) are at https://github.com/johnkalbac/margin/tree/main/docs/app-store/review-samples, though any Markdown or text file works.
+
+4. EXTERNAL SERVICES
+None. Margin makes no network connections and uses no external services, data providers, authentication, payment processors, analytics or AI services. It has no network entitlement. All functionality runs locally. It is built on open-source components bundled in the app (Electron, CodeMirror, markdown-it, React, DOMPurify, the Geist typeface), whose licences are included in the app's Resources folder as THIRD_PARTY_NOTICES.txt.
+
+5. REGIONAL DIFFERENCES
+None. The app functions identically in all regions. It has no region-specific features or content; the interface is in English.
+
+6. REGULATED INDUSTRY / THIRD-PARTY MATERIAL
+Not applicable. Margin does not operate in a regulated industry and contains no protected third-party material. The bundled open-source components are used under their licences (mostly MIT; also BSD, ISC, MPL/Apache, PSF, the SIL Open Font License, and LGPL-2.1 for the text-encoding detector jschardet), all reproduced in the app as noted above.
+
+The app is sandboxed and accesses only files the user picks in an Open or Save dialog; security-scoped bookmarks let recent files reopen after relaunch.
 ```
 
 Contact: name, phone and email of whoever should hear from App Review.
+
+### Review screen recording
+
+Apple asked for one with the 1.0.1 submission (new developer account). Record the
+TestFlight or App Store build, not the dev build, on the current macOS. ⌘⇧5 →
+Record Entire Screen; stop from the menu bar. Then QuickTime → File → Export As →
+1080p, so the file is small enough to attach. About 90 seconds:
+
+1. Start on the desktop. Launch Margin from Applications or Launchpad; the home screen appears.
+2. File > Open… → `review-samples/Sample.md`. The split view appears.
+3. Type a line or two; the preview updates. Scroll the editor; the preview follows.
+4. ⌘S. Change a word, wait three seconds, ⌘S again.
+5. View > Toggle History → click the older version → its preview → Close.
+6. View > Compare With File… → `Sample (earlier draft).md` → the inline diff → View > Exit Compare.
+7. ⌘K → type "dark" → Return. Dark mode.
+8. ⌘Q, relaunch, and reopen Sample.md from the recent files on the home screen.
