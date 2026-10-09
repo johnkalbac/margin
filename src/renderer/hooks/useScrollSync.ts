@@ -103,7 +103,7 @@ function editorTopLine(view: EditorView): number {
 interface ScrollSyncOptions {
   getView: () => EditorView | null
   previewRef: RefObject<HTMLElement | null>
-  /** False while a pane is maximized — there is nothing to sync to. */
+  /** False while a pane is maximized or the panes are not mounted. */
   enabled: boolean
 }
 

@@ -243,6 +243,41 @@ try {
     `${(shell.editorText ?? '').length} chars`)
   check('preview rendered the welcome document', shell.previewBlocks > 5, `${shell.previewBlocks} blocks`)
 
+  // ── Scroll sync ───────────────────────────────────────────────────────────
+  // Checked here, on the first open after the home screen, because that is
+  // where the panes mount after the sync hook has already run — once it
+  // bound to nothing and the panes scrolled independently.
+  const paneCenter = (selector) => page.evaluate((s) => {
+    const r = document.querySelector(s).getBoundingClientRect()
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 }
+  }, selector)
+  const scrollTops = () => page.evaluate(() => ({
+    editor: document.querySelector('.cm-scroller').scrollTop,
+    preview: document.querySelector('.preview__scroll').scrollTop,
+    scrollable: (() => {
+      const p = document.querySelector('.preview__scroll')
+      return p.scrollHeight > p.clientHeight
+    })()
+  }))
+  const editorAt = await paneCenter('.cm-scroller')
+  await page.mouse.move(editorAt.x, editorAt.y)
+  await page.mouse.wheel(0, 400)
+  const editorDriven = await until(() =>
+    document.querySelector('.preview__scroll').scrollTop > 0, 'preview follows editor', 3_000)
+  const afterEditor = await scrollTops()
+  check('scrolling the editor scrolls the preview',
+    afterEditor.scrollable && afterEditor.editor > 0 && editorDriven,
+    `editor=${afterEditor.editor} preview=${afterEditor.preview}`)
+
+  const previewAt = await paneCenter('.preview__scroll')
+  await page.mouse.move(previewAt.x, previewAt.y)
+  await page.mouse.wheel(0, -10_000)
+  const previewDriven = await until(() =>
+    document.querySelector('.cm-scroller').scrollTop === 0, 'editor follows preview', 3_000)
+  const afterPreview = await scrollTops()
+  check('scrolling the preview scrolls the editor', previewDriven,
+    `editor=${afterPreview.editor} preview=${afterPreview.preview}`)
+
   // ── Pane divider ──────────────────────────────────────────────────────────
   // Real pointer input, not dispatched events: the drag listeners outlive the
   // React handler that installs them, which is exactly where it once broke.

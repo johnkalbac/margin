@@ -899,7 +899,9 @@ export function App(): React.JSX.Element {
   const { setSource } = useScrollSync({
     getView: editor.getView,
     previewRef: previewScrollRef,
-    enabled: paneFocus === 'split'
+    // The panes only exist off the home screen; keying on that re-binds the
+    // listeners to the fresh EditorView each time they mount.
+    enabled: paneFocus === 'split' && documents.length > 0
   })
 
   // ── Commands ──────────────────────────────────────────────────────────────
