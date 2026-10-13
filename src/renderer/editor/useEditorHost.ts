@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { EditorView } from '@codemirror/view'
 import { redo, selectAll, undo } from '@codemirror/commands'
 import { openSearchPanel } from '@codemirror/search'
@@ -284,18 +284,41 @@ export function useEditorHost({ mode, callbacks }: HostOptions): EditorHost {
     }
   }, [])
 
-  return {
-    attach,
-    getView,
-    openDocument,
-    replaceDocument,
-    activateDocument,
-    getContent,
-    closeDocument,
-    focus,
-    measure,
-    setTheme,
-    runCommand,
-    setCompare
-  }
+  /*
+   * One object for the life of the host. App lists `editor` as a dependency in
+   * a dozen places, among them the pane-focus layout effect that restores the
+   * preview's scroll offset: a fresh object per render re-ran that effect on
+   * every render — every cursor move, keystroke and tab switch — and snapped
+   * the preview back to the remembered offset, breaking scroll sync.
+   */
+  return useMemo(
+    () => ({
+      attach,
+      getView,
+      openDocument,
+      replaceDocument,
+      activateDocument,
+      getContent,
+      closeDocument,
+      focus,
+      measure,
+      setTheme,
+      runCommand,
+      setCompare
+    }),
+    [
+      attach,
+      getView,
+      openDocument,
+      replaceDocument,
+      activateDocument,
+      getContent,
+      closeDocument,
+      focus,
+      measure,
+      setTheme,
+      runCommand,
+      setCompare
+    ]
+  )
 }

@@ -29,12 +29,22 @@ export interface MenuDeps {
   openRecent: (path: string) => void
   /** Command ids the renderer currently reports as unavailable. */
   disabledIds: () => ReadonlySet<string>
+  /**
+   * A menu command clicked with no window open. macOS keeps the app running
+   * after the last window closes, and the commands that make sense from there
+   * (New, New Window, Open) have to work without a renderer to route through.
+   */
+  runWindowless: (id: string) => void
+  /** Focus a window, creating one if every window has been closed. */
+  showWindow: () => void
 }
 
 let deps: MenuDeps | null = null
 
 function invoke(id: string): void {
-  deps?.focusedWindow()?.webContents.send(IPC.commandInvoke, id)
+  const window = deps?.focusedWindow()
+  if (window) window.webContents.send(IPC.commandInvoke, id)
+  else deps?.runWindowless(id)
 }
 
 function itemFor(spec: CommandSpec, platform: Platform): MenuItemConstructorOptions {
@@ -133,13 +143,29 @@ export function buildMenu(next: MenuDeps, platform: Platform = process.platform 
     }
   }
 
-  template.push({
-    label: 'Window',
-    submenu:
-      platform === 'darwin'
-        ? [{ role: 'minimize' }, { role: 'zoom' }, { type: 'separator' }, { role: 'front' }]
-        : [{ role: 'minimize' }, { role: 'zoom' }, { role: 'close' }]
-  })
+  // On macOS the 'window' role makes this the app's Window menu, which the
+  // system appends the open windows to. Closed windows are not listed, so the
+  // first item reopens one: App Review requires a way back after the last
+  // window is closed (Guideline 4).
+  template.push(
+    platform === 'darwin'
+      ? {
+          label: 'Window',
+          role: 'window',
+          submenu: [
+            { label: PRODUCT_NAME, accelerator: 'CmdOrCtrl+0', click: () => deps?.showWindow() },
+            { type: 'separator' },
+            { role: 'minimize' },
+            { role: 'zoom' },
+            { type: 'separator' },
+            { role: 'front' }
+          ]
+        }
+      : {
+          label: 'Window',
+          submenu: [{ role: 'minimize' }, { role: 'zoom' }, { role: 'close' }]
+        }
+  )
 
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }

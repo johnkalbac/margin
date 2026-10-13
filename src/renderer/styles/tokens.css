@@ -223,9 +223,13 @@
   /* -- Editor ----------------------------------------------------------- */
   --editor-font-size: 13.5px;
   --editor-line-height: 22px;
-  /* Neutral, per "no signal colours" - the system's cool surface step. */
-  --editor-selection: var(--surface-cool);
-  --editor-active-line: var(--canvas-warm);
+  /*
+   * Neutral, per "no signal colours": --slate at low alpha. The active line
+   * must stay translucent - it paints above CodeMirror's selection layer, so an
+   * opaque fill hides any selection on the cursor's line.
+   */
+  --editor-selection: rgba(90, 100, 114, 0.24);
+  --editor-active-line: rgba(10, 10, 10, 0.02);
 }
 
 /*
@@ -261,8 +265,8 @@
   --ui-quiet: #a9b3c1;
   --ui-quieter: var(--mute);
 
-  --editor-selection: var(--surface-cool);
-  --editor-active-line: #1d2024;
+  --editor-selection: rgba(151, 161, 175, 0.3);
+  --editor-active-line: rgba(255, 255, 255, 0.025);
 }
 
 /*

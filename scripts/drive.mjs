@@ -278,6 +278,25 @@ try {
   check('scrolling the preview scrolls the editor', previewDriven,
     `editor=${afterPreview.editor} preview=${afterPreview.preview}`)
 
+  // Clicking into the editor re-renders App (the cursor moves). That once re-ran
+  // the pane-focus layout effect on every render, snapping the preview to the
+  // top while the editor stayed put.
+  await page.mouse.move(editorAt.x, editorAt.y)
+  await page.mouse.wheel(0, 400)
+  await until(() => document.querySelector('.preview__scroll').scrollTop > 0, 'preview follows editor', 3_000)
+  const beforeClick = await scrollTops()
+  await page.mouse.click(editorAt.x, editorAt.y)
+  await new Promise((r) => setTimeout(r, 400))
+  const afterClick = await scrollTops()
+  check('clicking into the editor leaves the preview where it was',
+    beforeClick.preview > 0 && Math.abs(afterClick.preview - beforeClick.preview) < 2,
+    `preview ${beforeClick.preview} -> ${afterClick.preview}`)
+  // The click moved the cursor; later steps type at the start of the document.
+  await page.keyboard.press(`${MOD}+ArrowUp`)
+  await page.mouse.move(previewAt.x, previewAt.y)
+  await page.mouse.wheel(0, -10_000)
+  await until(() => document.querySelector('.cm-scroller').scrollTop === 0, 'panes back at the top', 3_000)
+
   // ── Pane divider ──────────────────────────────────────────────────────────
   // Real pointer input, not dispatched events: the drag listeners outlive the
   // React handler that installs them, which is exactly where it once broke.

@@ -28,9 +28,13 @@ const baseTheme = EditorView.theme({
     overflow: 'auto'
   },
 
+  // The body opts the chrome out of text selection and the I-beam (app.css);
+  // the editor is the one surface that is a document, so it opts back in.
   '.cm-content': {
     padding: '0',
-    caretColor: 'var(--ink)'
+    caretColor: 'var(--ink)',
+    cursor: 'text',
+    userSelect: 'text'
   },
 
   '.cm-gutters': {

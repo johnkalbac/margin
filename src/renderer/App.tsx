@@ -896,13 +896,20 @@ export function App(): React.JSX.Element {
     window.localStorage.setItem(SPLIT_STORAGE_KEY, String(ratio))
   }, [ratio])
 
-  const { setSource } = useScrollSync({
+  const { setSource, alignPreview } = useScrollSync({
     getView: editor.getView,
     previewRef: previewScrollRef,
     // The panes only exist off the home screen; keying on that re-binds the
     // listeners to the fresh EditorView each time they mount.
     enabled: paneFocus === 'split' && documents.length > 0
   })
+
+  // A switched-to tab restores its editor scroll; the preview has to follow it.
+  // Declared after useScrollSync so its listeners are bound first, and in App so
+  // it runs after PreviewPane's effect has patched in the new document.
+  useEffect(() => {
+    if (activeId !== null) alignPreview()
+  }, [activeId, alignPreview])
 
   // ── Commands ──────────────────────────────────────────────────────────────
 

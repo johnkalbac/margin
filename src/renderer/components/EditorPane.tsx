@@ -39,6 +39,9 @@ export function EditorPane({
       aria-label="Editor"
       onPointerEnter={onInteract}
       onFocusCapture={onInteract}
+      // Typing drives the editor even with the pointer resting on the preview:
+      // a keystroke that scrolls the cursor into view has to carry the preview.
+      onKeyDownCapture={onInteract}
     >
       <PaneHeader
         label="Editor"

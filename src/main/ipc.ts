@@ -387,7 +387,10 @@ export function registerIpcHandlers(next: IpcDeps): void {
     recentFiles: () => settings.recent(),
     openRecent: (path) => {
       const window = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? null
-      if (!window) return
+      if (!window) {
+        openIntoFreshWindow(path)
+        return
+      }
       void chooseAndOpen(window, path).then((result) => {
         if (!result.ok) return
         // A recent entry can name a file that has since been deleted or moved;
@@ -396,8 +399,43 @@ export function registerIpcHandlers(next: IpcDeps): void {
         else window.webContents.send(IPC.docOpened, result.value)
       })
     },
-    disabledIds: () => disabledCommandIds
+    disabledIds: () => disabledCommandIds,
+    runWindowless: (id) => {
+      // A fresh window seeds its own untitled document, so New needs nothing more.
+      if (id === 'file.new' || id === 'file.newWindow') deps.createWindow()
+      else if (id === 'file.open' || id === 'file.openInNewWindow') openIntoFreshWindow()
+    },
+    showWindow: () => {
+      const [existing] = BrowserWindow.getAllWindows()
+      if (!existing) {
+        deps.createWindow()
+        return
+      }
+      if (existing.isMinimized()) existing.restore()
+      existing.show()
+      existing.focus()
+    }
   })
+
+  /**
+   * Open with no window to open into: the dialog runs app-modal, and only a
+   * file actually chosen gets a window, which receives it once loaded — the
+   * same hand-over Open in New Window uses.
+   */
+  function openIntoFreshWindow(path?: string): void {
+    void chooseAndOpen(null, path).then((result) => {
+      if (!result.ok) return
+      if (result.value.length === 0) {
+        if (path) settings.forget(path)
+        return
+      }
+      const window = deps.createWindow({ handover: true })
+      const payloads = result.value
+      window.webContents.once('did-finish-load', () => {
+        window.webContents.send(IPC.docOpened, payloads)
+      })
+    })
+  }
 
   ipcMain.on(IPC.docChanged, (_event, payload: unknown) => {
     if (!isChangedPayload(payload)) return

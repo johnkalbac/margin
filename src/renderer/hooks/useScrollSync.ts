@@ -109,22 +109,46 @@ interface ScrollSyncOptions {
 
 export function useScrollSync({ getView, previewRef, enabled }: ScrollSyncOptions): {
   setSource: (source: SyncSource) => void
+  alignPreview: () => void
 } {
   const sourceRef = useRef<SyncSource>('editor')
   const syncingRef = useRef(false)
   const frameRef = useRef<number | null>(null)
+  const alignRef = useRef<(() => void) | null>(null)
 
   const setSource = useCallback((source: SyncSource) => {
     sourceRef.current = source
   }, [])
 
+  /**
+   * Bring the preview to the editor's position, whichever pane was driving.
+   *
+   * For a tab switch: the editor restores that document's scroll snapshot, but
+   * the scroll event it fires is dropped when the preview was the source, and
+   * otherwise lands before the preview holds the new document. Either way the
+   * preview was left wherever patching the new content put it — usually the top.
+   */
+  const alignPreview = useCallback(() => alignRef.current?.(), [])
+
   useEffect(() => {
     if (!enabled) return
-    const view = getView()
-    const preview = previewRef.current
-    if (!view || !preview) return
 
-    const editorScroller = view.scrollDOM
+    /*
+     * Neither the view nor the preview element is captured here. The EditorView
+     * is created and destroyed by a ref callback, and React can replace it
+     * without this effect re-running: StrictMode in development mounts, tears
+     * down and remounts the pane, and the effect ended up bound to the
+     * scroller of the view that had just been destroyed — so in `npm run dev`
+     * the editor never drove the preview at all. Both are read at event time
+     * instead, and one capture-phase listener on the document sees scroll
+     * events from whichever elements are current (scroll does not bubble, but
+     * it does capture).
+     */
+    const current = (): { view: EditorView; preview: HTMLElement } | null => {
+      const view = getView()
+      const preview = previewRef.current
+      return view && preview ? { view, preview } : null
+    }
 
     /** Suppress the echo from the scroll we are about to cause. */
     const guard = (apply: () => void): void => {
@@ -138,45 +162,75 @@ export function useScrollSync({ getView, previewRef, enabled }: ScrollSyncOption
       })
     }
 
-    const onEditorScroll = (): void => {
-      if (sourceRef.current !== 'editor') return
+    const previewTargetForEditor = (view: EditorView, preview: HTMLElement): number | null => {
+      const anchors = readAnchors(preview)
+      if (anchors.length === 0) return null
+      const target = topForLine(anchors, editorTopLine(view), view.defaultLineHeight)
+      return clamp(target, 0, preview.scrollHeight - preview.clientHeight)
+    }
+
+    const syncPreviewToEditor = (view: EditorView, preview: HTMLElement): void => {
       guard(() => {
-        const anchors = readAnchors(preview)
-        if (anchors.length === 0) return
-        const line = editorTopLine(view)
-        const target = topForLine(anchors, line, view.defaultLineHeight)
-        preview.scrollTop = clamp(target, 0, preview.scrollHeight - preview.clientHeight)
+        const target = previewTargetForEditor(view, preview)
+        if (target !== null) preview.scrollTop = target
       })
     }
 
-    const onPreviewScroll = (): void => {
-      if (sourceRef.current !== 'preview') return
+    const syncEditorToPreview = (view: EditorView, preview: HTMLElement): void => {
       guard(() => {
         const anchors = readAnchors(preview)
         if (anchors.length === 0) return
+        const scroller = view.scrollDOM
         const line = lineForTop(anchors, preview.scrollTop, view.defaultLineHeight)
         const clamped = clamp(Math.floor(line), 1, view.state.doc.lines)
         const block = view.lineBlockAt(view.state.doc.line(clamped).from)
         const fraction = line - clamped
-        editorScroller.scrollTop = clamp(
+        scroller.scrollTop = clamp(
           block.top + fraction * block.height,
           0,
-          editorScroller.scrollHeight - editorScroller.clientHeight
+          scroller.scrollHeight - scroller.clientHeight
         )
       })
     }
 
-    editorScroller.addEventListener('scroll', onEditorScroll, { passive: true })
-    preview.addEventListener('scroll', onPreviewScroll, { passive: true })
+    const onScroll = (event: Event): void => {
+      const panes = current()
+      if (!panes) return
+      if (event.target === panes.view.scrollDOM) {
+        if (sourceRef.current === 'editor') syncPreviewToEditor(panes.view, panes.preview)
+      } else if (event.target === panes.preview) {
+        if (sourceRef.current === 'preview') syncEditorToPreview(panes.view, panes.preview)
+      }
+    }
+
+    // Two frames on, so CodeMirror has applied the incoming state's scroll
+    // restore (it lands in the view's own measure cycle, which a measure
+    // request is not ordered after) and the preview holds the new document.
+    let alignFrame: number | null = null
+    alignRef.current = () => {
+      if (alignFrame !== null) cancelAnimationFrame(alignFrame)
+      alignFrame = requestAnimationFrame(() => {
+        alignFrame = requestAnimationFrame(() => {
+          alignFrame = null
+          const panes = current()
+          if (!panes) return
+          syncingRef.current = false
+          syncPreviewToEditor(panes.view, panes.preview)
+        })
+      })
+    }
+
+    document.addEventListener('scroll', onScroll, { capture: true, passive: true })
 
     return () => {
-      editorScroller.removeEventListener('scroll', onEditorScroll)
-      preview.removeEventListener('scroll', onPreviewScroll)
+      alignRef.current = null
+      if (alignFrame !== null) cancelAnimationFrame(alignFrame)
+      document.removeEventListener('scroll', onScroll, { capture: true })
       if (frameRef.current !== null) cancelAnimationFrame(frameRef.current)
       frameRef.current = null
       syncingRef.current = false
     }
   }, [enabled, getView, previewRef])
 
-  return { setSource }
+  return { setSource, alignPreview }
 }
