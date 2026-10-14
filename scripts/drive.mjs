@@ -339,20 +339,20 @@ try {
   // What IS checkable is the half the renderer owns: that a drag hovering the
   // shell raises the inset outline and leaving clears it. The drop path itself
   // is covered by the pure-filter unit tests (tests/renderer/drop.test.ts).
-  const dragAffordance = await page.evaluate(async () => {
-    const shellEl = document.querySelector('.shell')
-    if (!shellEl) return { hovered: false, cleared: false }
-    shellEl.dispatchEvent(new DragEvent('dragenter', { bubbles: true, dataTransfer: new DataTransfer() }))
-    shellEl.dispatchEvent(new DragEvent('dragover', { bubbles: true, dataTransfer: new DataTransfer() }))
-    // React state settles on the next frame.
-    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
-    const hovered = shellEl.classList.contains('shell--dragging')
-    shellEl.dispatchEvent(new DragEvent('dragleave', { bubbles: true, dataTransfer: new DataTransfer() }))
-    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
-    return { hovered, cleared: !shellEl.classList.contains('shell--dragging') }
-  })
-  check('dragging a file over the shell raises the outline', dragAffordance.hovered)
-  check('the outline clears when the drag leaves', dragAffordance.cleared)
+  // Drag events are continuous-priority in React, so the state lands in a
+  // scheduled render, not synchronously or by a fixed frame count — on a slow
+  // CI runner two frames was not enough. Wait for the class instead.
+  const dragTo = (type) => page.evaluate((type) => {
+    document.querySelector('.shell')
+      ?.dispatchEvent(new DragEvent(type, { bubbles: true, dataTransfer: new DataTransfer() }))
+  }, type)
+  await dragTo('dragenter')
+  await dragTo('dragover')
+  const hovered = await until(() => !!document.querySelector('.shell--dragging'), 'drag outline', 3_000)
+  await dragTo('dragleave')
+  const cleared = await until(() => !document.querySelector('.shell--dragging'), 'drag outline to clear', 3_000)
+  check('dragging a file over the shell raises the outline', hovered)
+  check('the outline clears when the drag leaves', cleared)
 
   // The appearance toggle sits between the cursor position and the flavor.
   const footerOrder = await page.evaluate(() =>
